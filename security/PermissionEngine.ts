@@ -158,7 +158,6 @@ export class PermissionEngine {
       }
 
       case 'default':
-      default:
         if (isDestructive || this.isSuspiciousCommand(args)) {
           return {
             allowed: false,
@@ -170,6 +169,14 @@ export class PermissionEngine {
           allowed: true,
           requiresPrompt: false,
           reason: 'Standard operation permitted in default mode.',
+        };
+
+      default:
+        // Security Fail-Closed: Unrecognized or misconfigured mode must strictly deny
+        return {
+          allowed: false,
+          requiresPrompt: true,
+          reason: `Security Fail-Closed: Unrecognized or misconfigured permission mode "${this.mode}". Operation denied by default.`,
         };
     }
   }
