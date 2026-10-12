@@ -7,7 +7,7 @@ export interface DiffViewerProps {
   maxLines?: number;
 }
 
-export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, maxLines = 30 }) => {
+export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, maxLines = 15 }) => {
   if (!diff) return null;
 
   const lines = diff.split('\n');
