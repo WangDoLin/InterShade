@@ -18,13 +18,17 @@ export const ToolProgressBlock: React.FC<ToolProgressBlockProps> = ({
     return null;
   }
 
+  const cleanProgress = progressText
+    ? progressText.replace(/\s+/g, ' ').trim()
+    : null;
+
   return (
     <Box
       flexDirection="column"
       borderStyle="single"
       borderColor={THEME.colors.border}
       paddingX={1}
-      marginY={1}
+      marginY={0}
     >
       <Box flexDirection="row" alignItems="center">
         <Text color={THEME.colors.muted}>├─ </Text>
@@ -43,10 +47,10 @@ export const ToolProgressBlock: React.FC<ToolProgressBlockProps> = ({
         )}
       </Box>
 
-      {progressText && (
+      {cleanProgress && (
         <Box marginTop={0} paddingLeft={2}>
           <Text color={THEME.colors.muted}>
-            └─ {progressText}
+            └─ {cleanProgress.length > 80 ? `${cleanProgress.slice(0, 77)}...` : cleanProgress}
           </Text>
         </Box>
       )}
