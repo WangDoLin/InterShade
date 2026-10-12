@@ -20,11 +20,23 @@ export class PermissionEngine {
   private allowRules: ParsedRule[] = [];
   private denyRules: ParsedRule[] = [];
 
+  private static readonly VALID_MODES: ReadonlySet<string> = new Set([
+    'default',
+    'acceptEdits',
+    'bypassPermissions',
+    'dontAsk',
+    'plan',
+    'auto',
+  ]);
+
   constructor(mode: ExtendedPermissionMode = 'default') {
-    this.mode = mode;
+    this.mode = PermissionEngine.VALID_MODES.has(mode) ? mode : 'default';
   }
 
   setMode(mode: ExtendedPermissionMode): void {
+    if (!PermissionEngine.VALID_MODES.has(mode)) {
+      throw new Error(`Security Exception: Invalid permission mode "${mode}". Must be one of: ${Array.from(PermissionEngine.VALID_MODES).join(', ')}`);
+    }
     this.mode = mode;
   }
 
