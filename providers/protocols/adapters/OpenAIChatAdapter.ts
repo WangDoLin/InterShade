@@ -59,6 +59,7 @@ class OpenAIChatLanguageModel implements LanguageModel {
           messages: openAIMessages,
           tools: openAITools.length > 0 ? openAITools : undefined,
           temperature: request.generation?.temperature ?? 0.2,
+          max_tokens: request.generation?.maxTokens ?? 16384,
           stream: true,
           stream_options: { include_usage: true },
         },
