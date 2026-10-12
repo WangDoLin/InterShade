@@ -15,7 +15,7 @@ export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
 
   if (message.role === 'user') {
     return (
-      <Box flexDirection="column" marginY={1}>
+      <Box flexDirection="column" marginY={0} paddingBottom={1}>
         <Text bold color={THEME.colors.accent}>
           {THEME.brand.promptSymbol} You:
         </Text>
@@ -35,7 +35,7 @@ export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
       message.content.startsWith('[Authentication');
 
     return (
-      <Box flexDirection="column" marginY={1}>
+      <Box flexDirection="column" marginY={0} paddingBottom={1}>
         <Text bold color={isError ? THEME.colors.error : THEME.colors.primary}>
           {THEME.brand.toolSymbol} {THEME.brand.name}:
         </Text>
@@ -43,7 +43,7 @@ export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
         {message.thought && (
           <Box paddingLeft={2} marginY={0} flexDirection="column">
             <Text color={THEME.colors.muted} italic>
-              │ [Thought]: {message.thought.slice(0, 300)}...
+              │ [Thought]: {message.thought.replace(/\s+/g, ' ').trim().slice(0, 300)}...
             </Text>
           </Box>
         )}
