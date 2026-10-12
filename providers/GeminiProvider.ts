@@ -28,6 +28,7 @@ export class GeminiProvider extends BaseProvider {
       tools: functionDeclarations.length > 0 ? [{ functionDeclarations: functionDeclarations as any }] : undefined,
       generationConfig: {
         temperature: temperature ?? 0.2,
+        maxOutputTokens: params.maxTokens ?? 16384,
       },
     });
 
