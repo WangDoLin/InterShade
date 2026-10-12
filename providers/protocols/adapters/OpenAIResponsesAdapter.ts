@@ -221,6 +221,7 @@ class OpenAIResponsesLanguageModel implements LanguageModel {
       tools: tools.length > 0 ? tools : undefined,
       stream: true,
       temperature: request.generation?.temperature ?? 0.2,
+      max_output_tokens: request.generation?.maxTokens ?? 16384,
     };
   }
 }
