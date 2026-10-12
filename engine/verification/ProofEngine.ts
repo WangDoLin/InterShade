@@ -435,6 +435,11 @@ export class ProofEngine {
             encoding: 'utf-8',
           });
           unitExecDuration = Date.now() - execStart;
+          const cleanOutput = (unitOutput || '').trim();
+          if (cleanOutput.length === 0) {
+            unitPassed = false;
+            unitMessage = 'FAIL (NO_EVALUATION): Test command completed with exit code 0 but produced zero test execution output.';
+          }
         } catch (err: any) {
           unitPassed = false;
           unitExitCode = err.status || 1;
@@ -443,7 +448,8 @@ export class ProofEngine {
           unitMessage = `Unit tests failed:\n${unitOutput.trim()}`;
         }
       } else {
-        unitMessage = 'No automated unit tests configured in package.json';
+        unitPassed = false;
+        unitMessage = 'FAIL (NO_TEST_EVIDENCE): No automated unit tests configured in package.json. Empirical verification strictly requires test evidence.';
       }
     }
 
