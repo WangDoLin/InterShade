@@ -93,6 +93,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     const handleToolStart = (name: string) => {
       setCurrentToolName(name);
       setProgressText(null);
+      setMessages([...queryEngine.getMessages()]);
+      setContextTokens(queryEngine.getContextTokens());
     };
 
     const handleToolProgress = (progress: string) => {
@@ -472,73 +474,20 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     [messages]
   );
 
-  // If the last visible message is an error, it is considered complete immediately and not streamed in live area
-  const lastVisible = visibleMessages.length > 0 ? visibleMessages[visibleMessages.length - 1] : null;
-  const isLastError =
-    lastVisible?.role === 'assistant' &&
-    (lastVisible.content.startsWith('[Error]') ||
-      lastVisible.content.startsWith('[Provider Error]') ||
-      lastVisible.content.startsWith('[Quota Exceeded') ||
-      lastVisible.content.startsWith('[OpenAI Quota Exceeded') ||
-      lastVisible.content.startsWith('[Model Unavailable') ||
-      lastVisible.content.startsWith('[Authentication'));
-
-  // If currently streaming an assistant response, keep only the active assistant message in live area
-  const isStreamingAssistant =
-    isBusy &&
-    !isLastError &&
-    visibleMessages.length > 0 &&
-    lastVisible?.role === 'assistant';
-
-  const completedMessages = useMemo(
-    () => (isStreamingAssistant ? visibleMessages.slice(0, -1) : visibleMessages),
-    [visibleMessages, isStreamingAssistant]
-  );
-
-  const activeMessage = isStreamingAssistant ? lastVisible : null;
-
-  // Bounded viewport height for streaming to guarantee outputHeight < stdout.rows at all times
-  // Accounts for visual wrapping so wide text/JSON cannot cause Yoga layout to overflow terminal height
-  const displayActiveMessage = useMemo(() => {
-    if (!activeMessage) return null;
-    const termRows = process.stdout?.rows || 24;
-    const termCols = Math.max(20, (process.stdout?.columns || 80) - 6);
-    // Overhead: margins (2), prompt (3), status line (2), tool block (2) = ~9-10 lines
-    const maxVisualLines = Math.max(3, Math.min(6, termRows - 14));
-
-    const logicalLines = activeMessage.content.split('\n');
-    const visualLines: string[] = [];
-    for (const line of logicalLines) {
-      if (line.length <= termCols) {
-        visualLines.push(line);
-      } else {
-        for (let i = 0; i < line.length; i += termCols) {
-          visualLines.push(line.slice(i, i + termCols));
-        }
-      }
-    }
-
-    if (visualLines.length > maxVisualLines) {
-      const windowed = visualLines.slice(-maxVisualLines).join('\n');
-      return {
-        ...activeMessage,
-        content: `... [streaming tail below]\n${windowed}`,
-      };
-    }
-    return activeMessage;
-  }, [activeMessage]);
-
   type StaticItem =
     | { type: 'header'; id: string }
     | { type: 'message'; id: string; message: UnifiedMessage };
 
+  // All conversation messages in visibleMessages are completed turns.
+  // Rendering them directly via <Static> guarantees they are printed once in full to stdout,
+  // scroll naturally without truncation, and never overflow the dynamic terminal area.
   const staticItems: StaticItem[] = useMemo(() => {
     const items: StaticItem[] = [{ type: 'header', id: 'session-header' }];
-    for (const msg of completedMessages) {
+    for (const msg of visibleMessages) {
       items.push({ type: 'message', id: msg.id, message: msg });
     }
     return items;
-  }, [completedMessages]);
+  }, [visibleMessages]);
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -560,13 +509,6 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           return <MessageView key={item.id} message={item.message} />;
         }}
       </Static>
-
-      {/* Active in-progress streaming message */}
-      {displayActiveMessage && (
-        <Box flexDirection="column" marginY={1}>
-          <MessageView key={displayActiveMessage.id} message={displayActiveMessage} />
-        </Box>
-      )}
 
       <ToolProgressBlock
         currentToolName={currentToolName}
