@@ -12,6 +12,8 @@ const mockConfig: SessionConfig = {
   provider: 'google',
   permissionMode: 'default',
   resumeSession: false,
+  maxTokens: 200_000,
+  maxTurns: 10,
 };
 
 const queryEngine = new QueryEngine(mockConfig);
@@ -21,8 +23,8 @@ console.log('[PASS]: 1. QueryEngine exposes safe public abort() method');
 
 // 2. Test Prompt Queuing, Up Arrow In-Place Editing, and Auto-Dispatch
 let isBusy = true; // Agent running
-let queuedPrompt: string | null = null;
-let inputValue = '';
+let queuedPrompt: any = null;
+let inputValue: any = '';
 let dispatchedPrompts: string[] = [];
 let abortCalled = false;
 
@@ -83,31 +85,31 @@ function handleDone() {
 
 // Queue prompt 1
 handleUserSubmit('Prompt 1: Refactor auth service');
-assert.strictEqual(queuedPrompt, 'Prompt 1: Refactor auth service', 'Prompt 1 must be queued');
-assert.strictEqual(inputValue, '');
+assert.strictEqual(queuedPrompt as any, 'Prompt 1: Refactor auth service', 'Prompt 1 must be queued');
+assert.strictEqual(inputValue as any, '');
 
 // Edit queue via Up Arrow
 handleUpArrow();
-assert.strictEqual(inputValue, 'Prompt 1: Refactor auth service', 'Up Arrow must populate input with queued prompt');
-assert.strictEqual(queuedPrompt, null, 'Queue must be cleared when hydrated into input');
+assert.strictEqual(inputValue as any, 'Prompt 1: Refactor auth service', 'Up Arrow must populate input with queued prompt');
+assert.strictEqual(queuedPrompt as any, null, 'Queue must be cleared when hydrated into input');
 
 // User edits input and submits
-inputValue += ' with OAuth2 PKCE';
+inputValue = `${inputValue as any} with OAuth2 PKCE`;
 handleUserSubmit(inputValue);
-assert.strictEqual(queuedPrompt, 'Prompt 1: Refactor auth service with OAuth2 PKCE', 'Edited prompt must be re-queued');
-assert.strictEqual(inputValue, '');
+assert.strictEqual(queuedPrompt as any, 'Prompt 1: Refactor auth service with OAuth2 PKCE', 'Edited prompt must be re-queued');
+assert.strictEqual(inputValue as any, '');
 console.log('[PASS]: 2. Prompt queueing, Up Arrow editing, and re-queueing verified');
 
 // 3. Test Escape Key Hierarchy: partial input clear -> queue delete -> abort
 inputValue = 'draft to discard';
 handleEscape();
-assert.strictEqual(inputValue, '', 'Escape must clear active input buffer');
-assert.strictEqual(queuedPrompt, 'Prompt 1: Refactor auth service with OAuth2 PKCE', 'Queued prompt remains intact');
+assert.strictEqual(inputValue as any, '', 'Escape must clear active input buffer');
+assert.strictEqual(queuedPrompt as any, 'Prompt 1: Refactor auth service with OAuth2 PKCE', 'Queued prompt remains intact');
 
 // Escape on empty input deletes queue without stopping agent
 assert.strictEqual(isBusy, true);
 handleEscape();
-assert.strictEqual(queuedPrompt, null, 'Escape on empty input must delete queue');
+assert.strictEqual(queuedPrompt as any, null, 'Escape on empty input must delete queue');
 assert.strictEqual(isBusy, true, 'Agent must still be running');
 assert.strictEqual(abortCalled, false);
 console.log('[PASS]: 3. Hierarchical Escape deletes queue without stopping in-flight agent');
