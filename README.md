@@ -1,4 +1,4 @@
-# InterShader - Agentic VibeCoding
+# InterShade - Agentic VibeCoding
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-F5A623.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Node.js%2022+-4CAF50.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
