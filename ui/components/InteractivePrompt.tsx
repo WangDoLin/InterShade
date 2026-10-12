@@ -64,7 +64,7 @@ export const InteractivePrompt: React.FC<InteractivePromptProps> = ({
     : THEME.colors.border;
 
   return (
-    <Box flexDirection="column" marginY={1}>
+    <Box flexDirection="column" marginY={0}>
       {/* Autocomplete suggestion popup when user types '/' */}
       <CommandAutocomplete input={value} commands={availableCommands} />
 
