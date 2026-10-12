@@ -7,6 +7,7 @@ export interface ChatStreamParams {
   tools: ToolDefinition[];
   temperature?: number;
   thinkingBudget?: number;
+  maxTokens?: number;
   signal?: AbortSignal;
 }
 
