@@ -72,7 +72,7 @@ export class AnthropicProvider extends BaseProvider {
     const stream = this.client.messages.stream(
       {
         model,
-        max_tokens: isThinking ? Math.max(4096, thinkingBudget + 4000) : 4096,
+        max_tokens: isThinking ? Math.max(16384, (thinkingBudget || 0) + 8192) : (params.maxTokens ?? 16384),
         system: systemPrompt,
         messages: anthropicMessages,
         tools: anthropicTools.length > 0 ? anthropicTools : undefined,
