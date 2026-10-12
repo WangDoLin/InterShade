@@ -21,7 +21,7 @@ export const CommandAutocomplete: React.FC<CommandAutocompleteProps> = ({ input,
       if (c.aliases?.some((a) => a.toLowerCase().startsWith(query))) return true;
       return false;
     })
-    .slice(0, 6);
+    .slice(0, 3);
 
   if (matched.length === 0) {
     return null;
