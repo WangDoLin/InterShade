@@ -30,7 +30,76 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
   );
 
   const commandText = typeof args.command === 'string' ? args.command : null;
-  const argsFormatted = commandText ?? JSON.stringify(args, null, 2);
+
+  // Compact, bounded argument formatting to guarantee PermissionPrompt never overflows terminal rows
+  const renderArguments = () => {
+    if (commandText) {
+      const cleanCmd = commandText.trim();
+      const lines = cleanCmd.split('\n');
+      const preview = lines.slice(0, 2).join('\n');
+      const more = lines.length > 2 ? ` ... (+${lines.length - 2} lines)` : '';
+      return (
+        <Box flexDirection="row">
+          <Text bold color={THEME.colors.accent}>
+            Command:
+          </Text>
+          <Text color={THEME.colors.text}> {preview.length > 120 ? `${preview.slice(0, 117)}...` : preview}{more}</Text>
+        </Box>
+      );
+    }
+
+    const filePath = (args.filePath || args.path || args.file) as string | undefined;
+    const content = (args.content || args.file_content || args.patch) as string | undefined;
+
+    if (filePath && content !== undefined) {
+      const contentStr = String(content);
+      const contentLines = contentStr.split('\n');
+      const previewSnippet = contentLines.slice(0, 2).join('\n');
+      return (
+        <Box flexDirection="column">
+          <Text color={THEME.colors.text}>
+            <Text bold color={THEME.colors.accent}>File: </Text>
+            {filePath} ({contentLines.length} line(s), {contentStr.length} chars)
+          </Text>
+          <Text color={THEME.colors.muted}>
+            {previewSnippet}
+            {contentLines.length > 2 ? `\n... (+${contentLines.length - 2} lines hidden)` : ''}
+          </Text>
+        </Box>
+      );
+    }
+
+    // Generic argument sanitizer: truncate massive strings to short summaries
+    const sanitized: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (typeof v === 'string') {
+        if (v.length > 80 || v.includes('\n')) {
+          sanitized[k] = `${v.slice(0, 60).replace(/\s+/g, ' ')}... (${v.length} chars)`;
+        } else {
+          sanitized[k] = v;
+        }
+      } else {
+        sanitized[k] = v;
+      }
+    }
+
+    const jsonLines = JSON.stringify(sanitized, null, 2).split('\n');
+    const displayLines = jsonLines.slice(0, 4);
+    const hiddenCount = jsonLines.length - 4;
+
+    return (
+      <Box flexDirection="column">
+        <Text bold color={THEME.colors.accent}>
+          Arguments:
+        </Text>
+        <Text color={THEME.colors.text}>
+          {displayLines.join('\n')}
+          {hiddenCount > 0 ? `\n... (+${hiddenCount} lines hidden)` : ''}
+        </Text>
+      </Box>
+    );
+  };
+
   const cleanReason = reason.replace(/\s+/g, ' ').slice(0, 100);
 
   return (
@@ -52,21 +121,7 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
       </Box>
 
       <Box flexDirection="column" marginY={0}>
-        {commandText ? (
-          <Box flexDirection="row">
-            <Text bold color={THEME.colors.accent}>
-              Command:
-            </Text>
-            <Text color={THEME.colors.text}> {commandText}</Text>
-          </Box>
-        ) : (
-          <Box flexDirection="column">
-            <Text bold color={THEME.colors.accent}>
-              Arguments:
-            </Text>
-            <Text color={THEME.colors.text}>{argsFormatted}</Text>
-          </Box>
-        )}
+        {renderArguments()}
 
         <Box flexDirection="row" marginTop={0}>
           <Text bold color={THEME.colors.statusBad}>
