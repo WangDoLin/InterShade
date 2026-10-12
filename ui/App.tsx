@@ -85,9 +85,23 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
   useEffect(() => {
     // Listen to QueryEngine events
-    const handleText = () => {
-      setMessages([...queryEngine.getMessages()]);
+    const handleText = (delta?: string) => {
+      if (delta) {
+        const clean = delta.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
+        if (clean) {
+          setProgressText(clean.length > 70 ? `${clean.slice(-67)}...` : clean);
+        }
+      }
       setContextTokens(queryEngine.getContextTokens());
+    };
+
+    const handleThought = (delta?: string) => {
+      if (delta) {
+        const clean = delta.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
+        if (clean) {
+          setProgressText(clean.length > 70 ? `${clean.slice(0, 67)}...` : clean);
+        }
+      }
     };
 
     const handleToolStart = (name: string) => {
@@ -154,6 +168,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     };
 
     queryEngine.on('text', handleText);
+    queryEngine.on('thought', handleThought);
     queryEngine.on('user_message', handleUserMessage);
     queryEngine.on('message', handleSyntheticMessage);
     queryEngine.on('tool_start', handleToolStart);
