@@ -1,4 +1,12 @@
-# InterShader - Autonomous Software Engineering & Verification Agent
+# InterShader - Agentic VibeCoding
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-F5A623.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Node.js%2022+-4CAF50.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![SWE Engine](https://img.shields.io/badge/SWE%20Engine-10--Stage%20Causal%20Loop-FF6F00.svg)](https://github.com/WangDoLin/InterShade)
+[![Attestation](https://img.shields.io/badge/Attestation-RFC%208785%20%7C%20Ed25519-8A2BE2.svg)](https://github.com/WangDoLin/InterShade)
+[![Tests](https://img.shields.io/badge/Tests-100%25%20Passing-brightgreen.svg)](https://github.com/WangDoLin/InterShade)
+[![Terminal TUI](https://img.shields.io/badge/Terminal%20TUI-Resilient%20Ink-00BCD4.svg?logo=react&logoColor=white)](https://github.com/WangDoLin/InterShade)
 
 InterShader is a high-assurance, terminal-native autonomous coding agent and empirical software verification engine engineered for mission-critical software development. Built with the InterShader Resilient Terminal Engine, multi-provider neural orchestration, native Language Server Protocol (LSP) intelligence, and the Trusted Proof Infrastructure (V4), InterShader guarantees empirical correctness:
 
