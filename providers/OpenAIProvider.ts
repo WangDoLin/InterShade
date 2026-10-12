@@ -67,6 +67,7 @@ export class OpenAIProvider extends BaseProvider {
         messages: openAIMessages,
         tools: openAITools.length > 0 ? openAITools : undefined,
         temperature: temperature ?? 0.2,
+        max_tokens: params.maxTokens ?? 16384,
         stream: true,
         stream_options: { include_usage: true },
       },
