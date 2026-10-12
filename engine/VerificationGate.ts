@@ -50,13 +50,21 @@ export class VerificationGate {
   static verifyTests(cwd: string): VerificationResult {
     const pkgPath = path.join(cwd, 'package.json');
     if (!fs.existsSync(pkgPath)) {
-      return { passed: true, checkType: 'test' };
+      return {
+        passed: false,
+        checkType: 'test',
+        errorDetails: 'NO_TEST_EVIDENCE: package.json not found in workspace. Verification requires verifiable test evidence.',
+      };
     }
 
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
       if (!pkg.scripts?.test || pkg.scripts.test.includes('no test specified')) {
-        return { passed: true, checkType: 'test' };
+        return {
+          passed: false,
+          checkType: 'test',
+          errorDetails: 'NO_TEST_EVIDENCE: No automated test suite configured in package.json. Policy requires real test evidence.',
+        };
       }
 
       const output = execSync('npm test', {
@@ -65,6 +73,15 @@ export class VerificationGate {
         timeout: 45000,
         stdio: 'pipe',
       });
+
+      const cleanOut = (output || '').trim();
+      if (cleanOut.length === 0) {
+        return {
+          passed: false,
+          checkType: 'test',
+          errorDetails: 'NO_EVALUATION: Test command exited with code 0 but produced zero test execution output.',
+        };
+      }
 
       return { passed: true, checkType: 'test' };
     } catch (err: unknown) {
