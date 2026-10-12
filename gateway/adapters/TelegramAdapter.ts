@@ -35,13 +35,16 @@ export class TelegramAdapter {
   ): TelegramFormattedResponse {
     const text = [
       `<b>InterShader Approval Request</b>`,
-      `<b>Task:</b> ${taskId}`,
+      `<b>Task:</b> <code>${taskId}</code>`,
       `<b>Goal:</b> ${this.escapeHtml(goal)}`,
       ``,
       `<b>Diff Preview:</b>`,
       `<pre>${this.escapeHtml(diffSummary.slice(0, 1500))}</pre>`,
       ``,
-      `Please select approval to proceed with execution:`,
+      `<b>Safe Actions (Prevent Accidental Click):</b>`,
+      `• Type: <code>/confirm ${taskId}</code> to verify and execute`,
+      `• Type: <code>/reject ${taskId}</code> to decline`,
+      `• Or tap quick action button below:`,
     ].join('\n');
 
     return {
@@ -60,7 +63,7 @@ export class TelegramAdapter {
   }
 
   /**
-   * Parse incoming webhook update from Telegram Bot API
+   * Parse incoming webhook update from Telegram Bot API with typed confirmation support
    */
   static parseWebhookUpdate(payload: TelegramWebhookPayload): {
     type: 'message' | 'callback_query' | 'unknown';
@@ -79,10 +82,33 @@ export class TelegramAdapter {
     }
 
     if (payload.message && payload.message.text) {
+      const trimmed = payload.message.text.trim();
+      const parts = trimmed.split(/\s+/);
+      const cmd = parts[0]?.toLowerCase();
+      const targetId = parts[1];
+
+      if (cmd === '/confirm' || cmd === '/approve') {
+        return {
+          type: 'message',
+          chatId: payload.message.chat.id,
+          text: trimmed,
+          action: targetId ? `approve:${targetId}` : 'approve',
+        };
+      }
+
+      if (cmd === '/reject' || cmd === '/deny') {
+        return {
+          type: 'message',
+          chatId: payload.message.chat.id,
+          text: trimmed,
+          action: targetId ? `reject:${targetId}` : 'reject',
+        };
+      }
+
       return {
         type: 'message',
         chatId: payload.message.chat.id,
-        text: payload.message.text.trim(),
+        text: trimmed,
       };
     }
 
