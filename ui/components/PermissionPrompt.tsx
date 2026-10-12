@@ -31,6 +31,7 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
 
   const commandText = typeof args.command === 'string' ? args.command : null;
   const argsFormatted = commandText ?? JSON.stringify(args, null, 2);
+  const cleanReason = reason.replace(/\s+/g, ' ').slice(0, 100);
 
   return (
     <Box
@@ -38,7 +39,7 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
       borderStyle="round"
       borderColor={THEME.colors.warn}
       paddingX={1}
-      marginY={1}
+      marginY={0}
     >
       <Box flexDirection="row" alignItems="center">
         <Text bold color={THEME.colors.warn}>
@@ -50,7 +51,7 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
         </Text>
       </Box>
 
-      <Box flexDirection="column" marginY={1}>
+      <Box flexDirection="column" marginY={0}>
         {commandText ? (
           <Box flexDirection="row">
             <Text bold color={THEME.colors.accent}>
@@ -67,11 +68,11 @@ export const PermissionPrompt: React.FC<PermissionPromptProps> = ({
           </Box>
         )}
 
-        <Box flexDirection="row" marginTop={1}>
+        <Box flexDirection="row" marginTop={0}>
           <Text bold color={THEME.colors.statusBad}>
             Reason:
           </Text>
-          <Text color={THEME.colors.muted}> {reason}</Text>
+          <Text color={THEME.colors.muted}> {cleanReason}</Text>
         </Box>
       </Box>
 
