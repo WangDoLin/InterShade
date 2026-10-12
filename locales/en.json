@@ -1,0 +1,58 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - CLI coding agent",
+  "cli.option.model": "LLM model name (e.g. claude-3-7-sonnet-20250219, gpt-4o, deepseek-chat)",
+  "cli.option.provider": "LLM Provider (anthropic, openai, deepseek, gemini, ollama)",
+  "cli.option.plan": "Launch agent in Plan Mode (Read-Only)",
+  "cli.option.cwd": "Working directory path",
+  "cli.option.lang": "UI language locale (en, vi, ja, zh, es, fr, de, ko, ru)",
+  "cli.banner.starting": "Starting InterShader...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "Provider",
+  "header.model": "Model",
+  "header.tokens": "Tokens",
+  "header.cost": "Cost",
+  "header.planMode": "PLAN MODE",
+  "header.lang": "Language",
+
+  "prompt.placeholder": "Type your coding task or slash command (/plan, /lang, /clear, /exit)...",
+  "prompt.busyPlaceholder": "Type next message (Enter to queue, Esc/Ctrl+C to abort)...",
+  "prompt.queuedReplace": "Type to replace queued prompt...",
+  "prompt.submitting": "Processing task...",
+  "prompt.slashCommands": "Available commands: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "Press Ctrl+C to abort current execution",
+
+  "task.created": "Created Task #{0}: \"{1}\"",
+  "task.updated": "Updated Task #{0}: status -> {1}",
+  "task.deleted": "Deleted Task #{0}",
+  "task.notFound": "Task #{0} not found.",
+  "task.empty": "(No tasks in checklist)",
+  "task.blockedBy": "blocked by: #{0}",
+  "task.blocks": "blocks: #{0}",
+  "task.verificationNudge": "You have completed multiple tasks without a verification step. Please verify your changes by running tests or typecheck to ensure everything works as intended.",
+
+  "tools.fileRead.success": "Read {0} lines from {1}",
+  "tools.fileEdit.success": "Successfully modified {0}",
+  "tools.fileWrite.success": "Wrote {0} bytes ({1} lines) to {2}",
+  "tools.shell.executed": "Executed command in {0}ms with exit code {1}",
+  "tools.webFetch.success": "Fetched {0} characters from {1}",
+  "tools.toolSearch.activated": "Activated deferred tool \"{0}\"",
+
+  "security.dangerousCommand": "Confirm execution of potentially destructive command: \"{0}\"?",
+  "security.gitSafetyBlocked": "Writing to internal Git path \"{0}\" is forbidden.",
+  "security.ssrfBlocked": "Access to address \"{0}\" is forbidden.",
+
+  "slash.planModeOn": "Plan Mode ENABLED (Read-Only safe mode)",
+  "slash.planModeOff": "Plan Mode DISABLED (Full execution mode)",
+  "slash.clearDone": "Session message view cleared",
+  "slash.newSession": "Started new conversation (Session #{0})",
+  "slash.deletedSession": "Deleted conversation (#{0}) and started new session (Session #{1})",
+  "slash.langChanged": "Language switched to: {0}",
+  "slash.langInvalid": "Invalid language \"{0}\". Supported: {1}",
+  "slash.exit": "Exiting InterShader CLI.",
+
+  "errors.fileNotFound": "File \"{0}\" was not found.",
+  "errors.commandFailed": "Command failed with exit code {0}: {1}",
+  "errors.unknown": "An unexpected error occurred: {0}"
+}

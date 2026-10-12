@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.aegis/
+state.db
+state.db-journal
+state.db-wal
+state.db-shm
+.DS_Store
+Thumbs.db
+
+# InterShader Worktrees & Cache
+.intershade/
+.intershader/
+scratch/

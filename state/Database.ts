@@ -1,0 +1,146 @@
+import { createRequire } from 'module';
+import path from 'path';
+import fs from 'fs';
+import { config } from '../config/index.js';
+
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require('node:sqlite');
+
+let dbInstance: any = null;
+
+/**
+ * Initialize SQLite connection with WAL (Write-Ahead Logging) mode
+ */
+export function getDatabase(): any {
+  if (dbInstance) {
+    return dbInstance;
+  }
+
+  const dbPath = path.join(config.dataDir, 'state.db');
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+
+  const db = new DatabaseSync(dbPath);
+
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA synchronous = NORMAL;');
+  db.exec('PRAGMA foreign_keys = ON;');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      model TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      cwd TEXT NOT NULL,
+      permission_mode TEXT NOT NULL,
+      total_input_tokens INTEGER DEFAULT 0,
+      total_output_tokens INTEGER DEFAULT 0,
+      total_cost_usd REAL DEFAULT 0.0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tool_calls_json TEXT,
+      tool_result_json TEXT,
+      tool_call_id TEXT,
+      thought TEXT,
+      timestamp INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS file_snapshots (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      content_before TEXT NOT NULL,
+      content_after TEXT NOT NULL,
+      diff TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL,
+      active_form TEXT,
+      blocks TEXT NOT NULL,
+      blocked_by TEXT NOT NULL,
+      metadata TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS memories (
+      id TEXT PRIMARY KEY,
+      session_id TEXT,
+      project_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+      id UNINDEXED,
+      session_id UNINDEXED,
+      project_id UNINDEXED,
+      type,
+      title,
+      content,
+      tokenize='unicode61'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS trg_memories_ai AFTER INSERT ON memories BEGIN
+      INSERT INTO memories_fts (id, session_id, project_id, type, title, content)
+      VALUES (new.id, new.session_id, new.project_id, new.type, new.title, new.content);
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_memories_ad AFTER DELETE ON memories BEGIN
+      DELETE FROM memories_fts WHERE id = old.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS trg_memories_au AFTER UPDATE ON memories BEGIN
+      DELETE FROM memories_fts WHERE id = old.id;
+      INSERT INTO memories_fts (id, session_id, project_id, type, title, content)
+      VALUES (new.id, new.session_id, new.project_id, new.type, new.title, new.content);
+    END;
+
+    CREATE TABLE IF NOT EXISTS trajectories (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      intent TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      stages_executed TEXT NOT NULL,
+      changed_files TEXT NOT NULL,
+      status TEXT NOT NULL,
+      diff_stat TEXT,
+      repro_evidence TEXT,
+      tokens_used INTEGER DEFAULT 0,
+      duration_ms INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_session ON file_snapshots(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_trajectories_session ON trajectories(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_trajectories_task ON trajectories(task_id);
+  `);
+
+  dbInstance = db;
+  return db;
+}

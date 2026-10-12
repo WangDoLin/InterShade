@@ -1,0 +1,54 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - CLI d'agent de codage",
+  "cli.option.model": "Nom du modele LLM (ex. claude-3-7-sonnet-20250219, gpt-4o, deepseek-chat)",
+  "cli.option.provider": "Fournisseur LLM (anthropic, openai, deepseek, gemini, ollama)",
+  "cli.option.plan": "Lancer en Mode Plan (Lecture seule)",
+  "cli.option.cwd": "Chemin du repertoire de travail",
+  "cli.option.lang": "Langue de l'interface (en, vi, ja, zh, es, fr, de, ko, ru)",
+  "cli.banner.starting": "Demarrage d'InterShader...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "Fournisseur",
+  "header.model": "Modele",
+  "header.tokens": "Tokens",
+  "header.cost": "Cout",
+  "header.planMode": "MODE PLAN",
+  "header.lang": "Langue",
+
+  "prompt.placeholder": "Entrez votre tache ou commande slash (/plan, /lang, /clear, /exit)...",
+  "prompt.submitting": "Traitement de la tache...",
+  "prompt.slashCommands": "Commandes disponibles: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "Appuyez sur Ctrl+C pour interrompre l'execution",
+
+  "task.created": "Tache #{0} creee: \"{1}\"",
+  "task.updated": "Tache #{0} mise a jour: statut -> {1}",
+  "task.deleted": "Tache #{0} supprimee",
+  "task.notFound": "Tache #{0} introuvable.",
+  "task.empty": "(Aucune tache dans la liste)",
+  "task.blockedBy": "bloquee par: #{0}",
+  "task.blocks": "bloque: #{0}",
+  "task.verificationNudge": "Vous avez termine plusieurs taches sans etape de verification. Veuillez verifier vos modifications en executant les tests ou la verification des types.",
+
+  "tools.fileRead.success": "Lecture de {0} lignes depuis {1}",
+  "tools.fileEdit.success": "Modification reussie de {0}",
+  "tools.fileWrite.success": "Ecriture de {0} octets ({1} lignes) dans {2}",
+  "tools.shell.executed": "Commande executee en {0}ms avec code de sortie {1}",
+  "tools.webFetch.success": "{0} caracteres recuperes depuis {1}",
+  "tools.toolSearch.activated": "Outil differe \"{0}\" active",
+
+  "security.dangerousCommand": "Confirmer l'execution de la commande potentiellement destructive: \"{0}\"?",
+  "security.gitSafetyBlocked": "L'ecriture dans le chemin Git interne \"{0}\" est interdite.",
+  "security.ssrfBlocked": "L'acces a l'adresse \"{0}\" est interdit.",
+
+  "slash.planModeOn": "Mode Plan ACTIVE (Mode securise en lecture seule)",
+  "slash.planModeOff": "Mode Plan DESACTIVE (Mode d'execution complet)",
+  "slash.clearDone": "Historique des messages efface",
+  "slash.langChanged": "Langue modifiee pour: {0}",
+  "slash.langInvalid": "Langue invalide \"{0}\". Langues supportees: {1}",
+  "slash.exit": "Fermeture d'InterShader CLI.",
+
+  "errors.fileNotFound": "Fichier \"{0}\" introuvable.",
+  "errors.commandFailed": "La commande a echoue avec le code {0}: {1}",
+  "errors.unknown": "Une erreur inattendue est survenue: {0}"
+}

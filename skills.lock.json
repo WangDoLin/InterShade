@@ -1,0 +1,96 @@
+{
+  "lockfileVersion": "1.0.0",
+  "generatedAt": "2026-10-10T06:52:55.846Z",
+  "skills": {
+    "agent-tool-executor": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/agent-executor",
+      "commitSha": "d4e5f67890123456789abcdef0123456789a1b2c",
+      "license": "Apache-2.0",
+      "contentSha256": "2e323bc69735ee5e71fc5c12e287c62765d0eb1bbb4af6f7bafdba3940647321",
+      "treeSha256": "5114bbaa3962255ca52b3f5a8ef0785889f1baca8f71b34c516ee9f8b3b63015",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.844Z"
+    },
+    "cicd-deployment-orchestrator": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/cicd-orchestrator",
+      "commitSha": "f67890123456789abcdef0123456789a1b2c3d4e5",
+      "license": "Apache-2.0",
+      "contentSha256": "aca72f4b9d37aad53d39383d956514e0e98c9284f1445b54cef3d982280310a2",
+      "treeSha256": "1831fb7420854daa4ae32325769c81b78027693f5231d9fab253f353fe02cc1c",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.846Z"
+    },
+    "cloud-provider-adapter": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/openai/plugins/tree/main/skills/cloud-adapter",
+      "commitSha": "e5f67890123456789abcdef0123456789a1b2c3d4",
+      "license": "Apache-2.0",
+      "contentSha256": "cb8cb57b1e2d999424ab1013d1625d0f728d5d2ed32a8fae93c34750f27b60ff",
+      "treeSha256": "0a6e54e3de9d6df8418b66882c907bcc94dc4ecc3c0385ee6782ba497102f8c7",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": true,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.846Z"
+    },
+    "security-audit-snyk-guard": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/snyk/agent-scan",
+      "commitSha": "5c8d3e2a1b9f708192a3b4c5d6e7f80123456789",
+      "license": "Apache-2.0",
+      "contentSha256": "ee3a8fed24ec2e4d1102466e84d246c7465c9271527b183d839c901c8b3bcaaa",
+      "treeSha256": "09e501a165d9b7a81c6325892535eb0093b12a97b3c817f2f209ed12f938aab7",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.846Z"
+    },
+    "test-automation-vitest": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/anthropics/skills/tree/main/skills/webapp-testing",
+      "commitSha": "7b2c9e1054321fedcba9876543210fedcba98765",
+      "license": "Apache-2.0",
+      "contentSha256": "64dc5acae0accda0b2be16d792bea3b2577304d65e343e7a1c7d40f7e68812b1",
+      "treeSha256": "ace7a1f54e1660019d6d742b7643a10d68593865c4d1d0191514e264bd56cd79",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.846Z"
+    },
+    "typescript-nodejs-analyzer": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/typescript-analyzer",
+      "commitSha": "a3f89b4c2e1d7065983210456789abcdef012345",
+      "license": "Apache-2.0",
+      "contentSha256": "e4125673508fe1e475f5efe8003784eafe6858f51083a16d12d8ee156b3038c5",
+      "treeSha256": "97f4e28c9be284b443ac2aee1fa56cc152fd3ff938e65b392dbe8c59c2136344",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-10T06:52:55.846Z"
+    }
+  }
+}

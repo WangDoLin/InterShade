@@ -1,0 +1,54 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - Coding-Agent CLI",
+  "cli.option.model": "LLM-Modellname (z.B. claude-3-7-sonnet-20250219, gpt-4o, deepseek-chat)",
+  "cli.option.provider": "LLM-Anbieter (anthropic, openai, deepseek, gemini, ollama)",
+  "cli.option.plan": "Im Plan-Modus starten (Nur-Lese-Modus)",
+  "cli.option.cwd": "Arbeitsverzeichnispfad",
+  "cli.option.lang": "UI-Sprache (en, vi, ja, zh, es, fr, de, ko, ru)",
+  "cli.banner.starting": "InterShader wird gestartet...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "Anbieter",
+  "header.model": "Modell",
+  "header.tokens": "Tokens",
+  "header.cost": "Kosten",
+  "header.planMode": "PLAN-MODUS",
+  "header.lang": "Sprache",
+
+  "prompt.placeholder": "Aufgabe oder Slash-Befehl eingeben (/plan, /lang, /clear, /exit)...",
+  "prompt.submitting": "Aufgabe wird verarbeitet...",
+  "prompt.slashCommands": "Verfuegbare Befehle: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "Druecken Sie Strg+C zum Abbrechen",
+
+  "task.created": "Aufgabe #{0} erstellt: \"{1}\"",
+  "task.updated": "Aufgabe #{0} aktualisiert: Status -> {1}",
+  "task.deleted": "Aufgabe #{0} geloescht",
+  "task.notFound": "Aufgabe #{0} nicht gefunden.",
+  "task.empty": "(Keine Aufgaben vorhanden)",
+  "task.blockedBy": "blockiert durch: #{0}",
+  "task.blocks": "blockiert: #{0}",
+  "task.verificationNudge": "Sie haben mehrere Aufgaben ohne Verifizierungsschritt abgeschlossen. Bitte pruefen Sie Ihre Aenderungen mit Tests oder Typenpruefung.",
+
+  "tools.fileRead.success": "{0} Zeilen aus {1} gelesen",
+  "tools.fileEdit.success": "{0} erfolgreich geaendert",
+  "tools.fileWrite.success": "{0} Bytes ({1} Zeilen) in {2} geschrieben",
+  "tools.shell.executed": "Befehl in {0}ms mit Exit-Code {1} ausgefuehrt",
+  "tools.webFetch.success": "{0} Zeichen von {1} abgerufen",
+  "tools.toolSearch.activated": "Verzoegertes Tool \"{0}\" aktiviert",
+
+  "security.dangerousCommand": "Ausfuehrung von potenziell zerstoererischem Befehl bestaetigen: \"{0}\"?",
+  "security.gitSafetyBlocked": "Schreibzugriff auf Git-internen Pfad \"{0}\" ist untersagt.",
+  "security.ssrfBlocked": "Zugriff auf Adresse \"{0}\" ist blockiert.",
+
+  "slash.planModeOn": "Plan-Modus AKTIVIERT (Sicherer Nur-Lese-Modus)",
+  "slash.planModeOff": "Plan-Modus DEAKTIVIERT (Vollstaendiger Ausfuehrungsmodus)",
+  "slash.clearDone": "Nachrichtenverlauf geleert",
+  "slash.langChanged": "Sprache gewechselt zu: {0}",
+  "slash.langInvalid": "Ungueltige Sprache \"{0}\". Unterstuetzt: {1}",
+  "slash.exit": "InterShader CLI wird beendet.",
+
+  "errors.fileNotFound": "Datei \"{0}\" nicht gefunden.",
+  "errors.commandFailed": "Befehl fehlgeschlagen mit Exit-Code {0}: {1}",
+  "errors.unknown": "Ein unerwarteter Fehler ist aufgetreten: {0}"
+}

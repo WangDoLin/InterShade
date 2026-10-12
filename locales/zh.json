@@ -1,0 +1,54 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - 编程代理 CLI",
+  "cli.option.model": "LLM 模型名称 (例如 claude-3-7-sonnet-20250219, gpt-4o, deepseek-chat)",
+  "cli.option.provider": "LLM 提供商 (anthropic, openai, deepseek, gemini, ollama)",
+  "cli.option.plan": "以计划模式启动 (只读模式)",
+  "cli.option.cwd": "工作目录路径",
+  "cli.option.lang": "界面语言 (en, vi, ja, zh, es, fr, de, ko, ru)",
+  "cli.banner.starting": "正在启动 InterShader...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "提供商",
+  "header.model": "模型",
+  "header.tokens": "Tokens",
+  "header.cost": "费用",
+  "header.planMode": "计划模式",
+  "header.lang": "语言",
+
+  "prompt.placeholder": "输入编程任务或斜杠命令 (/plan, /lang, /clear, /exit)...",
+  "prompt.submitting": "正在处理任务...",
+  "prompt.slashCommands": "可用命令: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "按 Ctrl+C 中止当前执行",
+
+  "task.created": "已创建任务 #{0}: \"{1}\"",
+  "task.updated": "已更新任务 #{0}: 状态 -> {1}",
+  "task.deleted": "已删除任务 #{0}",
+  "task.notFound": "未找到任务 #{0}。",
+  "task.empty": "(清单中无任务)",
+  "task.blockedBy": "依赖于: #{0}",
+  "task.blocks": "阻塞: #{0}",
+  "task.verificationNudge": "您已完成了多个任务但尚未进行验证。在得出结论之前，请通过运行测试或类型检查来验证修改。",
+
+  "tools.fileRead.success": "从 {1} 读取了 {0} 行",
+  "tools.fileEdit.success": "成功修改了 {0}",
+  "tools.fileWrite.success": "写入了 {0} 字节 ({1} 行) 到 {2}",
+  "tools.shell.executed": "命令在 {0}ms 内执行完毕，退出代码为 {1}",
+  "tools.webFetch.success": "从 {1} 获取了 {0} 个字符",
+  "tools.toolSearch.activated": "已激活延迟工具 \"{0}\"",
+
+  "security.dangerousCommand": "确认执行潜在破坏性命令: \"{0}\"?",
+  "security.gitSafetyBlocked": "严禁写入 Git 内部路径 \"{0}\"。",
+  "security.ssrfBlocked": "阻止访问地址 \"{0}\"。",
+
+  "slash.planModeOn": "计划模式已启用 (只读安全模式)",
+  "slash.planModeOff": "计划模式已禁用 (完整执行模式)",
+  "slash.clearDone": "会话消息已清空",
+  "slash.langChanged": "语言已切换为: {0}",
+  "slash.langInvalid": "无效的语言 \"{0}\"。支持的语言: {1}",
+  "slash.exit": "正在退出 InterShader CLI。",
+
+  "errors.fileNotFound": "未找到文件 \"{0}\"。",
+  "errors.commandFailed": "命令失败，退出代码 {0}: {1}",
+  "errors.unknown": "发生未知错误: {0}"
+}

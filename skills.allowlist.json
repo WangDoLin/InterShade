@@ -1,0 +1,91 @@
+{
+  "policyVersion": "1.0.0",
+  "strictMode": true,
+  "allowUntrustedBuiltin": false,
+  "allowedSkills": {
+    "agent-tool-executor": {
+      "name": "agent-tool-executor",
+      "enabled": true,
+      "approvedCommitSha": "d4e5f67890123456789abcdef0123456789a1b2c",
+      "approvedContentSha256": "2e323bc69735ee5e71fc5c12e287c62765d0eb1bbb4af6f7bafdba3940647321",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for agent-tool-executor"
+    },
+    "cicd-deployment-orchestrator": {
+      "name": "cicd-deployment-orchestrator",
+      "enabled": true,
+      "approvedCommitSha": "f67890123456789abcdef0123456789a1b2c3d4e5",
+      "approvedContentSha256": "aca72f4b9d37aad53d39383d956514e0e98c9284f1445b54cef3d982280310a2",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for cicd-deployment-orchestrator"
+    },
+    "cloud-provider-adapter": {
+      "name": "cloud-provider-adapter",
+      "enabled": true,
+      "approvedCommitSha": "e5f67890123456789abcdef0123456789a1b2c3d4",
+      "approvedContentSha256": "cb8cb57b1e2d999424ab1013d1625d0f728d5d2ed32a8fae93c34750f27b60ff",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": true,
+        "filesystemWrite": false
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for cloud-provider-adapter"
+    },
+    "security-audit-snyk-guard": {
+      "name": "security-audit-snyk-guard",
+      "enabled": true,
+      "approvedCommitSha": "5c8d3e2a1b9f708192a3b4c5d6e7f80123456789",
+      "approvedContentSha256": "ee3a8fed24ec2e4d1102466e84d246c7465c9271527b183d839c901c8b3bcaaa",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for security-audit-snyk-guard"
+    },
+    "test-automation-vitest": {
+      "name": "test-automation-vitest",
+      "enabled": true,
+      "approvedCommitSha": "7b2c9e1054321fedcba9876543210fedcba98765",
+      "approvedContentSha256": "64dc5acae0accda0b2be16d792bea3b2577304d65e343e7a1c7d40f7e68812b1",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for test-automation-vitest"
+    },
+    "typescript-nodejs-analyzer": {
+      "name": "typescript-nodejs-analyzer",
+      "enabled": true,
+      "approvedCommitSha": "a3f89b4c2e1d7065983210456789abcdef012345",
+      "approvedContentSha256": "e4125673508fe1e475f5efe8003784eafe6858f51083a16d12d8ee156b3038c5",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-10T06:52:55.847Z",
+      "notes": "Initial approved baseline for typescript-nodejs-analyzer"
+    }
+  }
+}

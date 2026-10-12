@@ -1,0 +1,54 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - コーディングエージェント CLI",
+  "cli.option.model": "LLMモデル名",
+  "cli.option.provider": "LLMプロバイダー",
+  "cli.option.plan": "計画モードで起動 (読み取り専用)",
+  "cli.option.cwd": "作業ディレクトリパス",
+  "cli.option.lang": "UI言語ロケール",
+  "cli.banner.starting": "InterShaderを起動中...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "プロバイダー",
+  "header.model": "モデル",
+  "header.tokens": "トークン",
+  "header.cost": "コスト",
+  "header.planMode": "計画モード",
+  "header.lang": "言語",
+
+  "prompt.placeholder": "コーディングタスクまたはコマンド (/plan, /lang, /clear, /exit) を入力...",
+  "prompt.submitting": "処理中...",
+  "prompt.slashCommands": "利用可能なコマンド: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "Ctrl+C で中断",
+
+  "task.created": "タスク #{0} を作成: \"{1}\"",
+  "task.updated": "タスク #{0} を更新: ステータス -> {1}",
+  "task.deleted": "タスク #{0} を削除",
+  "task.notFound": "タスク #{0} が見つかりません。",
+  "task.empty": "(タスクがありません)",
+  "task.blockedBy": "依存先: #{0}",
+  "task.blocks": "ブロック対象: #{0}",
+  "task.verificationNudge": "検証なしで複数のタスクが完了しました。回答を終える前にテストや型チェックを実行して動作を確認してください。",
+
+  "tools.fileRead.success": "{1} から {0} 行を読み込みました",
+  "tools.fileEdit.success": "{0} の変更に成功しました",
+  "tools.fileWrite.success": "{2} に {0} バイト ({1} 行) を書き込みました",
+  "tools.shell.executed": "コマンド実行完了 ({0}ms, 終了コード {1})",
+  "tools.webFetch.success": "{1} から {0} 文字を取得しました",
+  "tools.toolSearch.activated": "遅延ツール \"{0}\" を有効化しました",
+
+  "security.dangerousCommand": "危険なコマンドの実行を確認: \"{0}\"?",
+  "security.gitSafetyBlocked": "Git内部パス \"{0}\" への書き込みは禁止されています。",
+  "security.ssrfBlocked": "アドレス \"{0}\" へのアクセスはブロックされました。",
+
+  "slash.planModeOn": "計画モード有効 (安全な読み取り専用モード)",
+  "slash.planModeOff": "計画モード無効 (通常実行モード)",
+  "slash.clearDone": "セッションメッセージをクリアしました",
+  "slash.langChanged": "言語を切り替えました: {0}",
+  "slash.langInvalid": "無効な言語 \"{0}\"。対応言語: {1}",
+  "slash.exit": "InterShaderを終了します。",
+
+  "errors.fileNotFound": "ファイル \"{0}\" が見つかりません。",
+  "errors.commandFailed": "コマンド失敗 (コード {0}): {1}",
+  "errors.unknown": "予期せぬエラーが発生しました: {0}"
+}

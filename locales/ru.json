@@ -1,0 +1,54 @@
+{
+  "cli.name": "intershader",
+  "cli.description": "InterShader - CLI агент для разработки",
+  "cli.option.model": "Название модели LLM (например claude-3-7-sonnet-20250219, gpt-4o, deepseek-chat)",
+  "cli.option.provider": "Провайдер LLM (anthropic, openai, deepseek, gemini, ollama)",
+  "cli.option.plan": "Запуск в режиме планирования (Только чтение)",
+  "cli.option.cwd": "Путь к рабочей директории",
+  "cli.option.lang": "Язык интерфейса (en, vi, ja, zh, es, fr, de, ko, ru)",
+  "cli.banner.starting": "Запуск InterShader...",
+
+  "header.title": "INTERSHADER",
+  "header.provider": "Провайдер",
+  "header.model": "Модель",
+  "header.tokens": "Токены",
+  "header.cost": "Стоимость",
+  "header.planMode": "РЕЖИМ ПЛАНА",
+  "header.lang": "Язык",
+
+  "prompt.placeholder": "Введите задачу или команду слеш (/plan, /lang, /clear, /exit)...",
+  "prompt.submitting": "Обработка задачи...",
+  "prompt.slashCommands": "Доступные команды: /plan, /lang <id>, /clear, /exit",
+  "prompt.abortHint": "Нажмите Ctrl+C для отмены выполнения",
+
+  "task.created": "Создана задача #{0}: \"{1}\"",
+  "task.updated": "Обновлена задача #{0}: статус -> {1}",
+  "task.deleted": "Удалена задача #{0}",
+  "task.notFound": "Задача #{0} не найдена.",
+  "task.empty": "(Список задач пуст)",
+  "task.blockedBy": "заблокировано: #{0}",
+  "task.blocks": "блокирует: #{0}",
+  "task.verificationNudge": "Вы выполнили несколько задач без шага проверки. Пожалуйста, проверьте изменения с помощью тестов или проверки типов.",
+
+  "tools.fileRead.success": "Прочитано {0} строк из {1}",
+  "tools.fileEdit.success": "Успешно изменено {0}",
+  "tools.fileWrite.success": "Записано {0} байт ({1} строк) в {2}",
+  "tools.shell.executed": "Команда выполнена за {0}мс с кодом {1}",
+  "tools.webFetch.success": "Получено {0} символов из {1}",
+  "tools.toolSearch.activated": "Активирован отложенный инструмент \"{0}\"",
+
+  "security.dangerousCommand": "Подтвердите выполнение потенциально опасной команды: \"{0}\"?",
+  "security.gitSafetyBlocked": "Запись во внутренний путь Git \"{0}\" запрещена.",
+  "security.ssrfBlocked": "Доступ к адресу \"{0}\" запрещен.",
+
+  "slash.planModeOn": "Режим плана ВКЛЮЧЕН (Безопасный режим только для чтения)",
+  "slash.planModeOff": "Режим плана ВЫКЛЮЧЕН (Полный режим выполнения)",
+  "slash.clearDone": "История сообщений очищена",
+  "slash.langChanged": "Язык переключен на: {0}",
+  "slash.langInvalid": "Недопустимый язык \"{0}\". Поддерживаются: {1}",
+  "slash.exit": "Выход из InterShader CLI.",
+
+  "errors.fileNotFound": "Файл \"{0}\" не найден.",
+  "errors.commandFailed": "Команда завершилась с ошибкой {0}: {1}",
+  "errors.unknown": "Произошла непредвиденная ошибка: {0}"
+}
