@@ -43,6 +43,7 @@ export class BridgedLanguageModelProvider extends BaseProvider {
       tools: params.tools,
       generation: {
         temperature: params.temperature,
+        maxTokens: params.maxTokens || 16384,
       },
       reasoning: params.thinkingBudget
         ? { budgetTokens: params.thinkingBudget }
