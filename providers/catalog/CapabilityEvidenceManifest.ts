@@ -26,7 +26,7 @@ export interface TrustRootKeyEntry {
 }
 
 // Generate static default Ed25519 authority keypair for InterShader Gateway Trust Root
-const DEFAULT_ED25519_PAIR = crypto.generateKeyPairSync('ed25519', {
+export const DEFAULT_ED25519_PAIR = crypto.generateKeyPairSync('ed25519', {
   publicKeyEncoding: { type: 'spki', format: 'pem' },
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
 });
