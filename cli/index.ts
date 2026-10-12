@@ -392,8 +392,22 @@ program
 
     const queryEngine = new QueryEngine(sessionConfig);
 
+    // Safe stdout proxy to prevent Ink from triggering catastrophic clearTerminal + fullStaticOutput dump
+    // when dynamic terminal height budget is evaluated against physical terminal rows.
+    const safeStdout = new Proxy(process.stdout, {
+      get(target, prop, receiver) {
+        if (prop === 'rows') {
+          return 99999;
+        }
+        const val = Reflect.get(target, prop, receiver);
+        return typeof val === 'function' ? val.bind(target) : val;
+      },
+    });
+
     // Launch Ink Terminal UI
-    render(React.createElement(App, { queryEngine, initialPrompt }));
+    render(React.createElement(App, { queryEngine, initialPrompt }), {
+      stdout: safeStdout as unknown as NodeJS.WriteStream,
+    });
   });
 
 program.parse(process.argv);
