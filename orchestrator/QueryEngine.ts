@@ -657,6 +657,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           tools: this.toolRegistry.getActiveTools(),
           temperature: this.sessionConfig.temperature,
           thinkingBudget: this.sessionConfig.thinkingBudget,
+          maxTokens: this.sessionConfig.maxTokens || 16384,
           signal: this.abortController.signal,
         });
 
