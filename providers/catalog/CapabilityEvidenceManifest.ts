@@ -42,11 +42,16 @@ export class TrustRootRegistry {
       DEFAULT_ED25519_PAIR.publicKey
     );
 
-    // Register Legacy HMAC Key for backward compatibility with existing suites
+    // Register Legacy HMAC Key from environment variable or dynamic cryptographic secret
+    const legacyHmacSecret =
+      process.env.INTERSHADER_HMAC_SECRET ||
+      process.env.GATEWAY_HMAC_SECRET ||
+      crypto.randomBytes(32).toString('hex');
+
     TrustRootRegistry.registerKey(
       'intershader-key-root-v2-1',
       'intershader-gateway-verifier-v2.1',
-      'intershader-production-trust-secret-v2-1-2-secure-digest'
+      legacyHmacSecret
     );
   }
 
