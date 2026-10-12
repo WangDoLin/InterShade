@@ -1,5 +1,11 @@
 import type { ModelDescriptor } from './ModelDescriptor.js';
-import { CapabilityEvidenceManifest, TrustRootRegistry, type CapabilityEvidence } from './CapabilityEvidenceManifest.js';
+import {
+  CapabilityEvidenceManifest,
+  TrustRootRegistry,
+  AuthoritySigner,
+  DEFAULT_ED25519_PAIR,
+  type CapabilityEvidence,
+} from './CapabilityEvidenceManifest.js';
 
 export class ModelCatalogStore {
   private static catalog = new Map<string, ModelDescriptor>();
@@ -265,11 +271,10 @@ export class ModelCatalogStore {
             authority: 'intershader-gateway-verifier-v2.1',
             configDigest: `sha256:${Buffer.from(JSON.stringify(m.capabilities)).toString('hex')}`,
           };
-          const keyEntry = TrustRootRegistry.getKey('intershader-key-root-v2-1')!;
-          m.signedManifest = CapabilityEvidenceManifest.signEvidence(
+          m.signedManifest = AuthoritySigner.signManifestEd25519(
             evidence,
-            keyEntry.secret || '',
-            'intershader-key-root-v2-1'
+            DEFAULT_ED25519_PAIR.privateKey,
+            'intershader-ed25519-root-v2-1'
           );
         }
       }
