@@ -18,11 +18,16 @@ export class AnthropicProvider extends BaseProvider {
     const { model, systemPrompt, messages, tools, temperature, thinkingBudget, signal } = params;
 
     // Convert tools to Anthropic format
-    const anthropicTools = tools.map((t) => ({
+    const anthropicTools: Anthropic.Tool[] = tools.map((t) => ({
       name: t.name,
       description: t.description,
       input_schema: zodToJsonSchema(t.inputSchema) as Anthropic.Tool.InputSchema,
     }));
+
+    // Enable prompt caching on the last tool to cache all tools definitions in Anthropic KV cache
+    if (anthropicTools.length > 0) {
+      (anthropicTools[anthropicTools.length - 1] as any).cache_control = { type: 'ephemeral' };
+    }
 
     // Convert messages to Anthropic MessageParam format
     const anthropicMessages: Anthropic.MessageParam[] = [];
@@ -65,6 +70,14 @@ export class AnthropicProvider extends BaseProvider {
       }
     }
 
+    // System prompt with Anthropic KV cache control for ultra-low TTFT
+    const systemPromptBlocks: Anthropic.TextBlockParam[] = [
+      {
+        type: 'text',
+        text: systemPrompt,
+        cache_control: { type: 'ephemeral' },
+      },
+    ];
 
     // Configure thinking parameters if enabled
     const isThinking = thinkingBudget && thinkingBudget > 0;
@@ -73,7 +86,7 @@ export class AnthropicProvider extends BaseProvider {
       {
         model,
         max_tokens: isThinking ? Math.max(16384, (thinkingBudget || 0) + 8192) : (params.maxTokens ?? 16384),
-        system: systemPrompt,
+        system: systemPromptBlocks,
         messages: anthropicMessages,
         tools: anthropicTools.length > 0 ? anthropicTools : undefined,
         temperature: isThinking ? undefined : (temperature ?? 0.2),
@@ -127,10 +140,16 @@ export class AnthropicProvider extends BaseProvider {
 
     const finalMessage = await stream.finalMessage();
     if (finalMessage.usage) {
+      const u = finalMessage.usage as unknown as {
+        input_tokens: number;
+        output_tokens: number;
+        cache_read_input_tokens?: number;
+      };
       yield {
         type: 'usage',
-        inputTokens: finalMessage.usage.input_tokens,
-        outputTokens: finalMessage.usage.output_tokens,
+        inputTokens: u.input_tokens,
+        outputTokens: u.output_tokens,
+        cacheReadTokens: u.cache_read_input_tokens || 0,
       };
     }
 
