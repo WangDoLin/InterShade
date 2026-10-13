@@ -7,8 +7,14 @@ import { MessageView } from './components/MessageView.js';
 import { ToolProgressBlock } from './components/ToolProgressBlock.js';
 import { InteractivePrompt } from './components/InteractivePrompt.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
+import { PromptHistoryBar } from './components/PromptHistoryBar.js';
+import { HistoryInspectionView } from './components/HistoryInspectionView.js';
+import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
+import { TerminalMouseManager } from './services/TerminalMouseManager.js';
+import { extractPromptTurns } from './utils/turnExtractor.js';
 import type { QueryEngine } from '../orchestrator/QueryEngine.js';
 import type { UnifiedMessage, PermissionRequest } from '../types/index.js';
+
 import { i18n, t } from '../services/i18n/index.js';
 import { SUPPORTED_LOCALES } from '../services/i18n/types.js';
 import { CommandRegistry, registerBuiltinCommands } from '../cli/commands/index.js';
@@ -31,6 +37,31 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   const [isBusy, setIsBusy] = useState(false);
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
+  const [viewingTurnIndex, setViewingTurnIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    const mouseMgr = TerminalMouseManager.getInstance();
+    mouseMgr.enable();
+    return () => {
+      mouseMgr.disable();
+    };
+  }, []);
+
+  const promptTurns = useMemo(() => extractPromptTurns(messages), [messages]);
+
+  const selectedTurn = useMemo(() => {
+    if (viewingTurnIndex === null) return null;
+    return promptTurns.find((t) => t.turnIndex === viewingTurnIndex) || null;
+  }, [promptTurns, viewingTurnIndex]);
+
+  const handleSelectTurn = useCallback((turnIndex: number) => {
+    setViewingTurnIndex(turnIndex);
+  }, []);
+
+  const handleReturnToBottom = useCallback(() => {
+    setViewingTurnIndex(null);
+  }, []);
+
 
   const isBusyRef = useRef(isBusy);
   isBusyRef.current = isBusy;
@@ -425,6 +456,21 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
     }
 
+    // History Inspection Navigation Slash Commands
+    if (prompt.startsWith('/inspect') || prompt.startsWith('/turn')) {
+      const parts = prompt.trim().split(/\s+/);
+      const targetTurn = parseInt(parts[1], 10);
+      if (!isNaN(targetTurn) && targetTurn >= 1 && targetTurn <= promptTurns.length) {
+        setViewingTurnIndex(targetTurn);
+        return;
+      }
+    }
+
+    if (prompt === '/return' || prompt === '/bottom') {
+      setViewingTurnIndex(null);
+      return;
+    }
+
     if (prompt === '/help') {
       const userCmdMsg: UnifiedMessage = {
         id: randomUUID(),
@@ -449,12 +495,15 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           '',
           '[System & Session Controls]',
           '  /plan        - Toggle Plan Mode (Read-Only)',
+          '  /turn <id>   - Inspect historical prompt turn in rewind viewport',
+          '  /return      - Return to latest bottom prompt input',
           '  /lang <id>   - Switch UI language (en, vi, ja, zh, es, fr, de, ko, ru)',
           '  /unqueue     - Delete/clear currently queued prompt',
           '  /clear       - Clear chat screen',
           '  /exit, /quit - Exit terminal',
           '',
           '[Code Quality & Versioning]',
+
           ...codeQualityCmds.map((c) => `  /${c.name.padEnd(12)} - ${c.description}`),
           '',
           '[Intelligence & Sandboxing]',
@@ -525,46 +574,72 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         }}
       </Static>
 
-      <ToolProgressBlock
-        currentToolName={currentToolName}
-        progressText={progressText}
-        isStreamingText={isBusy && !currentToolName}
+      {/* Top Sticky Prompt History Bar */}
+      <PromptHistoryBar
+        turns={promptTurns}
+        selectedTurnIndex={viewingTurnIndex}
+        onSelectTurn={handleSelectTurn}
+        onReturnToBottom={handleReturnToBottom}
       />
 
-      <StatusLine
-        model={sessionState.model}
-        provider={sessionState.provider}
-        cwd={sessionState.cwd}
-        permissionMode={sessionState.permissionMode}
-        totalInputTokens={sessionState.totalInputTokens}
-        totalOutputTokens={sessionState.totalOutputTokens}
-        contextTokens={contextTokens}
-        totalCostUsd={sessionState.totalCostUsd}
-        isBusy={isBusy}
-      />
-
-      {pendingPermission ? (
-        <PermissionPrompt
-          toolName={pendingPermission.toolName}
-          args={pendingPermission.args}
-          reason={pendingPermission.reason}
-          onRespond={(approved, remember) => {
-            pendingPermission.respond(approved, remember);
-            setPendingPermission(null);
-          }}
-        />
+      {selectedTurn ? (
+        <>
+          <HistoryInspectionView
+            turn={selectedTurn}
+            totalTurns={promptTurns.length}
+            onReturnToBottom={handleReturnToBottom}
+            onSelectTurn={handleSelectTurn}
+          />
+          <ReturnToBottomBar
+            onReturnToBottom={handleReturnToBottom}
+            activeTurnIndex={selectedTurn.turnIndex}
+          />
+        </>
       ) : (
-        <InteractivePrompt
-          onSubmit={handleUserSubmit}
-          onAbort={handleAbort}
-          onClearQueue={handleClearQueue}
-          isBusy={isBusy}
-          queuedPrompt={queuedPrompt}
-          disabled={false}
-          focus={!pendingPermission}
-          availableCommands={commandRegistry.list()}
-        />
+        <>
+          <ToolProgressBlock
+            currentToolName={currentToolName}
+            progressText={progressText}
+            isStreamingText={isBusy && !currentToolName}
+          />
+
+          <StatusLine
+            model={sessionState.model}
+            provider={sessionState.provider}
+            cwd={sessionState.cwd}
+            permissionMode={sessionState.permissionMode}
+            totalInputTokens={sessionState.totalInputTokens}
+            totalOutputTokens={sessionState.totalOutputTokens}
+            contextTokens={contextTokens}
+            totalCostUsd={sessionState.totalCostUsd}
+            isBusy={isBusy}
+          />
+
+          {pendingPermission ? (
+            <PermissionPrompt
+              toolName={pendingPermission.toolName}
+              args={pendingPermission.args}
+              reason={pendingPermission.reason}
+              onRespond={(approved, remember) => {
+                pendingPermission.respond(approved, remember);
+                setPendingPermission(null);
+              }}
+            />
+          ) : (
+            <InteractivePrompt
+              onSubmit={handleUserSubmit}
+              onAbort={handleAbort}
+              onClearQueue={handleClearQueue}
+              isBusy={isBusy}
+              queuedPrompt={queuedPrompt}
+              disabled={false}
+              focus={!pendingPermission}
+              availableCommands={commandRegistry.list()}
+            />
+          )}
+        </>
       )}
     </Box>
+
   );
 };

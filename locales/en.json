@@ -54,5 +54,14 @@
 
   "errors.fileNotFound": "File \"{0}\" was not found.",
   "errors.commandFailed": "Command failed with exit code {0}: {1}",
-  "errors.unknown": "An unexpected error occurred: {0}"
+  "errors.unknown": "An unexpected error occurred: {0}",
+
+  "promptHistory.title": "PROMPT HISTORY",
+  "promptHistory.active": "Active",
+  "promptHistory.turn": "Turn",
+  "promptHistory.returnToBottom": "▼ Return to Latest [Esc / B / Enter]",
+  "promptHistory.inspectingTitle": "INSPECTION MODE: Turn #{0} - \"{1}\"",
+  "promptHistory.navHint": "[Alt+1..9] Jump to Turn │ [Esc / B] Return to Bottom │ [↑/↓] Scroll │ [Click] Select",
+  "promptHistory.empty": "(No previous prompts)"
 }
+

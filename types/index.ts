@@ -109,3 +109,12 @@ export interface SessionState {
   totalOutputTokens: number;
   totalCostUsd: number;
 }
+
+export interface PromptTurnEntry {
+  turnIndex: number;
+  promptId: string;
+  promptText: string;
+  timestamp: number;
+  messages: UnifiedMessage[];
+}
+
