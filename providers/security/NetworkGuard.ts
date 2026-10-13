@@ -258,13 +258,18 @@ export class NetworkGuard {
         }
       }
 
-      const reqOptions: http.RequestOptions = {
+      if (!headers['host'] && !headers['Host']) {
+        headers['Host'] = targetUrl.host;
+      }
+
+      const reqOptions: https.RequestOptions = {
         protocol: targetUrl.protocol,
         hostname: targetUrl.hostname,
         port: targetUrl.port || (isHttps ? 443 : 80),
         path: `${targetUrl.pathname}${targetUrl.search}`,
         method: init.method || 'GET',
         headers,
+        servername: isHttps ? targetUrl.hostname : undefined,
         // Socket-level IP pinning: bypasses system DNS and pins socket connection to verifiedIp
         lookup: (_hostname: string, opts: unknown, cb: Function) => {
           const family = isIpv6 ? 6 : 4;
