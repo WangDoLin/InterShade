@@ -18,8 +18,24 @@ export interface GithubResearchResult {
   httpStatus?: number;
 }
 
+export interface WebSearchResultItem {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchResult {
+  query: string;
+  results: WebSearchResultItem[];
+  rawMarkdown?: string;
+  source: 'jina-search' | 'duckduckgo-fallback' | 'error';
+  latencyMs: number;
+  httpStatus?: number;
+}
+
 export class AgentReachRouter {
   private static readonly JINA_READER_PREFIX = 'https://r.jina.ai/';
+  private static readonly JINA_SEARCH_PREFIX = 'https://s.jina.ai/';
 
   /**
    * Convert any public web page, blog, issue, or doc into clean LLM-ready Markdown
@@ -210,5 +226,239 @@ export class AgentReachRouter {
         success: false,
       };
     }
+  }
+
+  /**
+   * Search the public web for documentation, libraries, guides, or error solutions
+   * with Jina Search as primary protocol and DuckDuckGo HTML as fallback.
+   */
+  static async webSearch(
+    query: string,
+    options: { maxResults?: number; timeoutMs?: number; isLocalAllowed?: boolean } = {}
+  ): Promise<WebSearchResult> {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) {
+      return {
+        query: '',
+        results: [],
+        source: 'error',
+        latencyMs: 0,
+        rawMarkdown: 'Search query cannot be empty.',
+      };
+    }
+
+    const maxResults = options.maxResults ?? 5;
+    const timeoutMs = options.timeoutMs ?? 10000;
+    const isLocalAllowed = Boolean(options.isLocalAllowed);
+    const startTime = Date.now();
+
+    // 1. Primary Route: Jina Search Protocol
+    const jinaRes = await AgentReachRouter.searchJina(cleanQuery, maxResults, timeoutMs, isLocalAllowed);
+    if (jinaRes && jinaRes.results.length > 0) {
+      return {
+        query: cleanQuery,
+        results: jinaRes.results,
+        rawMarkdown: SecretSanitizer.sanitize(jinaRes.raw),
+        source: 'jina-search',
+        latencyMs: Date.now() - startTime,
+        httpStatus: jinaRes.status,
+      };
+    }
+
+    // 2. Fallback Route: DuckDuckGo HTML Search
+    const ddgRes = await AgentReachRouter.searchDuckDuckGo(cleanQuery, maxResults, timeoutMs, isLocalAllowed);
+    if (ddgRes && ddgRes.results.length > 0) {
+      return {
+        query: cleanQuery,
+        results: ddgRes.results,
+        source: 'duckduckgo-fallback',
+        latencyMs: Date.now() - startTime,
+        httpStatus: ddgRes.status,
+      };
+    }
+
+    return {
+      query: cleanQuery,
+      results: [],
+      source: 'error',
+      latencyMs: Date.now() - startTime,
+      rawMarkdown: SecretSanitizer.sanitize(`No search results returned for "${cleanQuery}".`),
+    };
+  }
+
+  private static async searchJina(
+    query: string,
+    maxResults: number,
+    timeoutMs: number,
+    isLocalAllowed: boolean
+  ): Promise<{ results: WebSearchResultItem[]; raw: string; status: number } | null> {
+    const targetUrl = `${AgentReachRouter.JINA_SEARCH_PREFIX}${encodeURIComponent(query)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await NetworkGuard.safeFetch(
+        targetUrl,
+        {
+          headers: {
+            'Accept': 'application/json, text/markdown, */*',
+            'User-Agent': 'InterShader-Agent-Reach/1.0',
+          },
+          signal: controller.signal,
+        },
+        { isLocalAllowed }
+      );
+      clearTimeout(timer);
+
+      if (!response.ok) return null;
+      const rawText = await response.text();
+      const results = AgentReachRouter.parseJinaResponse(rawText, maxResults);
+      return { results, raw: rawText, status: response.status };
+    } catch {
+      clearTimeout(timer);
+      return null;
+    }
+  }
+
+  private static parseJinaResponse(rawText: string, maxResults: number): WebSearchResultItem[] {
+    const items: WebSearchResultItem[] = [];
+
+    // Attempt JSON parsing if Jina returned a JSON array
+    try {
+      const json = JSON.parse(rawText);
+      const list = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+      for (const item of list) {
+        if (item.url && (item.title || item.description)) {
+          items.push({
+            title: item.title || item.url,
+            url: item.url,
+            snippet: (item.description || item.content || '').slice(0, 300).trim(),
+          });
+          if (items.length >= maxResults) return items;
+        }
+      }
+    } catch {
+      // Markdown fallback format parsing
+    }
+
+    // Parse Markdown blocks: Title and URL Source patterns
+    const regex = /(?:\[\d+\]\s*)?Title:\s*([^\n]+)\s*\n+(?:\[\d+\]\s*)?URL Source:\s*(https?:\/\/[^\s\n]+)(?:\s*\n+(?:\[\d+\]\s*)?Markdown Content:\s*([^\n]+))?/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(rawText)) !== null) {
+      items.push({
+        title: match[1].trim(),
+        url: match[2].trim(),
+        snippet: (match[3] || '').slice(0, 300).trim(),
+      });
+      if (items.length >= maxResults) break;
+    }
+
+    // Additional fallback: Markdown links [Title](https://...)
+    if (items.length === 0) {
+      const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+      while ((match = linkRegex.exec(rawText)) !== null) {
+        if (!match[2].includes('jina.ai')) {
+          items.push({
+            title: match[1].trim(),
+            url: match[2].trim(),
+            snippet: '',
+          });
+          if (items.length >= maxResults) break;
+        }
+      }
+    }
+
+    return items;
+  }
+
+  private static async searchDuckDuckGo(
+    query: string,
+    maxResults: number,
+    timeoutMs: number,
+    isLocalAllowed: boolean
+  ): Promise<{ results: WebSearchResultItem[]; status: number } | null> {
+    const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await NetworkGuard.safeFetch(
+        targetUrl,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 InterShader/1.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          signal: controller.signal,
+        },
+        { isLocalAllowed }
+      );
+      clearTimeout(timer);
+
+      if (!response.ok) return null;
+      const html = await response.text();
+      const results = AgentReachRouter.parseDuckDuckGoHtml(html, maxResults);
+      return { results, status: response.status };
+    } catch {
+      clearTimeout(timer);
+      return null;
+    }
+  }
+
+  private static decodeHtmlEntities(str: string): string {
+    return str
+      .replace(/&#x27;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private static parseDuckDuckGoHtml(html: string, maxResults: number): WebSearchResultItem[] {
+    const items: WebSearchResultItem[] = [];
+    const titleRegex =
+      /<a[^>]*\bclass="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>|<a[^>]*href="([^"]+)"[^>]*\bclass="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    const titles: Array<{ url: string; title: string }> = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = titleRegex.exec(html)) !== null) {
+      let rawHref = match[1] || match[3] || '';
+      if (rawHref.includes('uddg=')) {
+        const extracted = rawHref.split('uddg=')[1]?.split(/&amp;|&/)[0];
+        if (extracted) rawHref = decodeURIComponent(extracted);
+      }
+      if (rawHref.startsWith('//')) {
+        rawHref = `https:${rawHref}`;
+      }
+      // Skip promotional ads
+      if (rawHref.includes('duckduckgo.com/y.js') || rawHref.includes('ad_domain=')) {
+        continue;
+      }
+      const rawTitle = match[2] || match[4] || '';
+      const cleanTitle = AgentReachRouter.decodeHtmlEntities(rawTitle);
+      titles.push({ url: rawHref, title: cleanTitle });
+      if (titles.length >= maxResults) break;
+    }
+
+    const snippetRegex = /<a[^>]*\bclass="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippets: string[] = [];
+    while ((match = snippetRegex.exec(html)) !== null) {
+      snippets.push(AgentReachRouter.decodeHtmlEntities(match[1]));
+      if (snippets.length >= maxResults) break;
+    }
+
+    for (let i = 0; i < titles.length; i++) {
+      items.push({
+        title: titles[i].title,
+        url: titles[i].url,
+        snippet: snippets[i] || '',
+      });
+    }
+
+    return items;
   }
 }
