@@ -54,6 +54,20 @@ interface CachedFileContent {
 const MAX_CACHE_ENTRIES = 100;
 const fileCache = new Map<string, CachedFileContent>();
 
+/**
+ * Clear the in-memory file read cache
+ */
+export function clearFileReadCache(): void {
+  fileCache.clear();
+}
+
+/**
+ * Return current number of cached files in memory
+ */
+export function getFileReadCacheSize(): number {
+  return fileCache.size;
+}
+
 export class FileReadTool extends BaseTool<{ filePath: string; offset?: number; limit?: number }, string> {
   readonly name = 'file_read';
   readonly description = 'Read the contents of a file with pagination support and binary file detection.';
