@@ -64,6 +64,15 @@ function calculateModelCost(inputTokens: number, outputTokens: number, model: st
   return (inputTokens / 1_000_000) * inputRatePerM + (outputTokens / 1_000_000) * outputRatePerM;
 }
 
+const MAX_CONSECUTIVE_EXPLORATORY_TURNS = 2;
+
+const SURGICAL_TASK_KEYWORDS: readonly string[] = [
+  'lỗi', 'bug', 'fix', 'error', 'failed', 'failure', 'crash', 'sửa', 'hỏng',
+  'sai', 'exception', 'traceback', 'không chạy', 'không hoạt động', 'issue',
+  'defect', 'broken', 'trọng tâm', 'đi vào trọng tâm', 'lân la', 'dạo quanh',
+  'bị dừng', 'patch', 'khắc phục', 'rework', 'chỉnh', 'cập nhật', 'sửa đổi'
+];
+
 export interface QueryEngineEvents {
   text: (delta: string) => void;
   thought: (delta: string) => void;
@@ -206,8 +215,17 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
 # Cognitive Deliberate Reasoning Protocol
 - PRE-ACTION DEEP REASONING: Before modifying files or running destructive commands, formulate a clear mental model and hypothesis. Identify the root cause, target dependencies, and potential side-effects.
-- HYPOTHESIS TESTING: Verify your assumptions before modifying code. Use non-destructive inspection tools (e.g. \`serena_outline\`, \`serena_definition\`, \`grep_search\`, \`file_read\`) to confirm symbol contracts and types.
+- HYPOTHESIS TESTING: Verify your assumptions before modifying code. Restrict inspections strictly to the immediate target symbol and its direct type contract. Do not wander into unrelated test suites or unrelated project directories.
 - DIAGNOSTIC COUNTER-HYPOTHESIS: When an operation fails, a tool returns an error, or a compiler/test check fails, NEVER repeat the identical failed action or guess blindly. Stop, analyze why the hypothesis failed, formulate a diagnostic counter-hypothesis, and adapt the strategy.
+
+# Surgical Bug-Fixing & Pinpoint Focus Protocol (Strict Anti-Wandering Directive)
+- CRITICAL PINPOINT FOCUS: When the user reports an error, bug, defect, unexpected behavior, or specific coding task:
+  1. GO DIRECTLY TO THE SOURCE: Immediately identify the target file, symbol, error message, or exact line from the user's prompt or error trace.
+  2. STRICT PROHIBITION ON WANDERING: You are STRICTLY FORBIDDEN from performing broad, speculative, or tangential exploratory searches. NEVER open, grep, or read unrelated test files, unrelated modules, or distant directories hoping to find clues.
+  3. MAXIMUM 1-2 TARGETED INSPECTIONS: Perform at most 1 to 2 targeted tool calls (e.g. read the exact target file/function with \`file_read\` or 1 laser-targeted \`grep_search\` on the specific error symbol) to confirm the exact lines to edit.
+  4. DIRECT REMEDIATION: Immediately apply the surgical fix to the target file using \`file_edit\`. Do not pause to read surrounding unrelated files.
+  5. OCCAM'S RAZOR & MINIMAL SURGERY: Implement the simplest correct fix directly resolving the reported bug. Do not refactor unrelated code, do not "clean up" working components, and do not add speculative features.
+  6. VERIFY & CONCLUDE: Run the specific test or command confirming the fix. Deliver the concise answer immediately.
 
 # Multi-Source Research & Empirical Synthesis Protocol
 - WHEN TO RESEARCH: Whenever encountering unfamiliar 3rd-party libraries, framework versions, external APIs, or obscure error logs:
@@ -391,6 +409,23 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     const systemMsg = this.messages.find((m) => m.role === 'system');
     this.messages = systemMsg ? [systemMsg] : [];
     this.currentContextTokens = TokenCounter.estimateMessagesTokens(this.messages);
+  }
+
+  /**
+   * Evaluates if a prompt targets a specific bug, error trace, or concrete implementation.
+   * If true, exploration phase is bypassed so the primary reasoning model acts with surgical focus.
+   */
+  public static isSurgicalFixOrTargetedPrompt(prompt: string): boolean {
+    if (!prompt || typeof prompt !== 'string') {
+      return false;
+    }
+    const p = prompt.toLowerCase();
+    if (SURGICAL_TASK_KEYWORDS.some((kw) => p.includes(kw))) {
+      return true;
+    }
+
+    const fileReferenceRegex = /\b[\w\-\/\\]+\.(py|ts|js|tsx|jsx|json|vue|go|rs|c|cpp|h|java|cs|rb|php|sql|md)\b/i;
+    return fileReferenceRegex.test(prompt);
   }
 
   /**
@@ -817,6 +852,11 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       this.reconcileDanglingToolCalls();
       this.refreshSystemPrompt();
 
+      const isSurgicalTask = QueryEngine.isSurgicalFixOrTargetedPrompt(userPrompt);
+      if (isSurgicalTask) {
+        this.isExplorationPhase = false;
+      }
+
       const userMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
@@ -859,6 +899,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
       let finalAssistantResponse = '';
       let turnCount = 0;
+      let consecutiveExploratoryTurns = 0;
       let completedNaturally = false;
       let lastToolTurnHadError = false;
       this.continuationGuard.resetConsecutive();
@@ -902,7 +943,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
         // 4. Dual-Loop Model Selection (Fast Explorer vs Deep Reasoner)
         const effectiveModel = this.sessionConfig.enableDualLoop
-          ? DualLoopExecutor.selectModelTier(this.isExplorationPhase, this.sessionConfig.model)
+          ? DualLoopExecutor.selectModelTier(this.isExplorationPhase, this.sessionConfig.model, isSurgicalTask)
           : this.sessionConfig.model;
 
         const { provider, model } = ProviderFactory.create(this.sessionConfig.provider, effectiveModel);
@@ -1079,10 +1120,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             this.requestConfirmation(prompt, details),
         };
 
-        for (const tc of pendingToolCalls) {
-          if (tc.name === 'file_edit' || tc.name === 'file_write') {
-            this.isExplorationPhase = false; // Transition to implementation phase
-          }
+        const hasMutatingTool = pendingToolCalls.some(
+          (tc) => tc.name === 'file_edit' || tc.name === 'file_write' || tc.name === 'run_shell_command'
+        );
+
+        if (hasMutatingTool) {
+          this.isExplorationPhase = false; // Transition to implementation phase
+          consecutiveExploratoryTurns = 0;
+        } else if (isSurgicalTask) {
+          consecutiveExploratoryTurns++;
         }
 
         const dispatchedResults = await ParallelToolDispatcher.dispatch(
@@ -1095,6 +1141,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           },
           this.permissionEngine
         );
+
+        if (
+          isSurgicalTask &&
+          consecutiveExploratoryTurns >= MAX_CONSECUTIVE_EXPLORATORY_TURNS &&
+          dispatchedResults.length > 0
+        ) {
+          const lastResult = dispatchedResults[dispatchedResults.length - 1];
+          lastResult.resultContent = `${lastResult.resultContent}\n\n[Surgical Pinpoint Alert]: You have inspected sufficient context. Strictly cease further file searches or exploratory reads. Go directly to the root cause and apply the surgical modification with file_edit now.`;
+        }
 
         lastToolTurnHadError = dispatchedResults.some((dr) => dr.isError);
         if (dispatchedResults.length > 0) {

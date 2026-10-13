@@ -6,10 +6,11 @@ export type ModelTier = 'fast_explorer' | 'deep_reasoner';
  */
 export class DualLoopExecutor {
   /**
-   * Determine the optimal model tier based on the current tool execution stage
+   * Determine the optimal model tier based on the current tool execution stage.
+   * If isSurgicalTask is true or isExplorationPhase is false, always preserves the requested deep model.
    */
-  static selectModelTier(isExplorationPhase: boolean, requestedModel: string): string {
-    if (!isExplorationPhase) {
+  static selectModelTier(isExplorationPhase: boolean, requestedModel: string, isSurgicalTask?: boolean): string {
+    if (!isExplorationPhase || isSurgicalTask) {
       return requestedModel;
     }
 

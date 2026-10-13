@@ -159,14 +159,18 @@ export class ModelRouter {
       };
     }
 
-    // 4. Classification: FAST / CHEAP (Explanations, queries, small lookups)
     const hasCodingAction =
       promptLower.includes('implement') ||
       promptLower.includes('code') ||
       promptLower.includes('write') ||
       promptLower.includes('fix') ||
       promptLower.includes('patch') ||
-      promptLower.includes('edit');
+      promptLower.includes('edit') ||
+      promptLower.includes('sửa') ||
+      promptLower.includes('lỗi') ||
+      promptLower.includes('bug') ||
+      promptLower.includes('error') ||
+      promptLower.includes('khắc phục');
 
     const isFast =
       !hasCodingAction &&
@@ -174,7 +178,12 @@ export class ModelRouter {
         promptLower.startsWith('explain') ||
         promptLower.startsWith('how to') ||
         promptLower.startsWith('why ') ||
+        promptLower.startsWith('giải thích') ||
+        promptLower.startsWith('tại sao') ||
+        promptLower.startsWith('làm thế nào') ||
+        promptLower.includes('là gì') ||
         promptLower.includes('summarize') ||
+        promptLower.includes('tóm tắt') ||
         promptLower.includes('what does'));
 
     if (isFast) {
