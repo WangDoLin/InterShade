@@ -196,6 +196,24 @@ reachCmd
     process.exit(0);
   });
 
+reachCmd
+  .command('search <query>')
+  .description('Search the web for technical documentation, libraries, or error solutions')
+  .option('-n, --num <number>', 'Number of results to return', '5')
+  .action(async (query: string, cmdOptions: { num: string }) => {
+    const maxResults = parseInt(cmdOptions.num, 10) || 5;
+    const res = await AgentReachRouter.webSearch(query, { maxResults });
+    console.log(`Reach Web Search (${res.source.toUpperCase()}) | ${res.latencyMs}ms`);
+    console.log(`Query: "${res.query}" (${res.results.length} results)\n`);
+    res.results.forEach((item, idx) => {
+      console.log(`${idx + 1}. ${item.title}`);
+      console.log(`   URL: ${item.url}`);
+      if (item.snippet) console.log(`   ${item.snippet}`);
+      console.log('');
+    });
+    process.exit(0);
+  });
+
 // Subcommand: worktree (Orca Worktree Orchestrator)
 const worktreeCmd = program
   .command('worktree')
