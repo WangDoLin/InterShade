@@ -146,7 +146,53 @@ async function runTests() {
   });
   assert(engine !== null, 'QueryEngine initializes with AutonomousContinuationGuard integrated');
 
-  console.log('\n--- ALL AUTONOMOUS CONTINUATION TESTS PASSED (10/10) ---');
+  // 11. Detect unexecuted code block in markdown without tool invocation
+  guard.resetConsecutive();
+  const codeBlockResult = guard.evaluateTurn({
+    assistantContent: 'Dưới đây là mã nguồn sửa lỗi trong file src/index.ts:\n```typescript\nexport function solve() { return true; }\n```',
+    pendingToolCallsCount: 0,
+    lastToolTurnHadError: false,
+    modifiedFilesCount: 0,
+    isProofModeActive: false,
+    isPlanModeActive: false,
+  });
+  assert(codeBlockResult.shouldContinue === true, 'Markdown code block without tool triggers continuation');
+  assert(codeBlockResult.reason === 'UNEXECUTED_CODE_BLOCK', 'Reason is UNEXECUTED_CODE_BLOCK');
+  assert(!!codeBlockResult.nudgePrompt && codeBlockResult.nudgePrompt.includes('file_edit or file_write'), 'Nudge prompt instructs tool invocation');
+
+  // 12. Detect incomplete multi-step plan formulation
+  guard.resetConsecutive();
+  const planResult = guard.evaluateTurn({
+    assistantContent: 'Kế hoạch triển khai:\nBước 1: Khảo sát cấu trúc thư mục và đọc file cấu hình.\nBước 2: Sửa file server.ts.',
+    pendingToolCallsCount: 0,
+    lastToolTurnHadError: false,
+    modifiedFilesCount: 0,
+    isProofModeActive: false,
+    isPlanModeActive: false,
+  });
+  assert(planResult.shouldContinue === true, 'Incomplete multi-step plan triggers continuation');
+  assert(planResult.reason === 'INCOMPLETE_PLAN_STEPS', 'Reason is INCOMPLETE_PLAN_STEPS');
+  assert(!!planResult.nudgePrompt && planResult.nudgePrompt.includes('Step 1'), 'Nudge prompt instructs executing Step 1');
+
+  // 13. Detect unclosed markdown code block as truncation
+  guard.resetConsecutive();
+  const unclosedTruncationResult = guard.evaluateTurn({
+    assistantContent: 'Here is the implementation:\n```typescript\nfunction process() {\n  const x = 10;\n  return x * 2;',
+    pendingToolCallsCount: 0,
+    lastToolTurnHadError: false,
+    modifiedFilesCount: 0,
+    isProofModeActive: false,
+  });
+  assert(unclosedTruncationResult.shouldContinue === true, 'Unclosed code block triggers continuation for truncation');
+  assert(unclosedTruncationResult.reason === 'TRUNCATED_MAX_TOKENS', 'Reason is TRUNCATED_MAX_TOKENS for unclosed code block');
+
+  // 14. Verify QueryEngine.isExecutionDirective accurately identifies coding commands
+  assert(QueryEngine.isExecutionDirective('fix') === true, 'Recognizes "fix" as execution directive');
+  assert(QueryEngine.isExecutionDirective('sửa lỗi này đi') === true, 'Recognizes Vietnamese fix request');
+  assert(QueryEngine.isExecutionDirective('bắt đầu làm') === true, 'Recognizes start work directive');
+  assert(QueryEngine.isExecutionDirective('/plan xem xét') === false, 'Ignores /plan commands');
+
+  console.log('\n--- ALL AUTONOMOUS CONTINUATION TESTS PASSED (14/14) ---');
 }
 
 runTests().catch((err) => {

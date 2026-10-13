@@ -448,6 +448,40 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   /**
+   * Evaluates if a prompt explicitly requests execution, coding, or bug fixing,
+   * indicating the session should transition from plan mode to execution mode.
+   */
+  public static isExecutionDirective(prompt: string): boolean {
+    if (!prompt || typeof prompt !== 'string') {
+      return false;
+    }
+    const p = prompt.trim().toLowerCase();
+    if (p.startsWith('/plan')) {
+      return false;
+    }
+    const executionKeywords = [
+      'fix',
+      'sửa',
+      'code',
+      'implement',
+      'apply',
+      'bắt đầu làm',
+      'làm đi',
+      'chạy đi',
+      'thực hiện',
+      'tiến hành',
+      'bắt tay vào',
+      'execute',
+      'update',
+      'tạo file',
+      'sửa file',
+      'modify',
+      'refactor',
+    ];
+    return executionKeywords.some((kw) => p.includes(kw));
+  }
+
+  /**
    * Sets or clears the active engineering skill workflow for this session.
    */
   setActiveSkill(skillName: string | null): void {
@@ -703,6 +737,12 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       lower.includes('fetch failed') ||
       lower.includes('socket hang up') ||
       lower.includes('network timeout') ||
+      lower.includes('network error') ||
+      lower.includes('connection error') ||
+      lower.includes('premature close') ||
+      lower.includes('stream closed') ||
+      lower.includes('stream ended') ||
+      lower.includes('aborted') ||
       lower.includes('terminated')
     );
   }
@@ -905,6 +945,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         this.isExplorationPhase = false;
       }
 
+      // Auto-transition out of Plan Mode when an explicit coding/execution directive is given
+      if (this.sessionConfig.permissionMode === 'plan' && QueryEngine.isExecutionDirective(userPrompt)) {
+        this.setPermissionMode('default');
+        this.emit(
+          'verification',
+          '[Plan Mode Auto-Transition]: Transitioned from Plan Mode to Execution Mode to apply requested code changes.'
+        );
+      }
+
       const userMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
@@ -1045,7 +1094,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         }
 
         if (streamError) {
-          assistantContent = this.formatProviderError(streamError);
+          const formattedErr = this.formatProviderError(streamError);
+          assistantContent = assistantContent
+            ? `${assistantContent}\n\n[Warning: Stream interrupted - ${formattedErr}]`
+            : formattedErr;
         } else if (!assistantContent && pendingToolCalls.length === 0) {
           assistantContent = '[Notice]: The model returned an empty response. Please verify your provider settings or prompt.';
           this.emit('text', assistantContent);
@@ -1090,6 +1142,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             lastToolTurnHadError,
             modifiedFilesCount: this.evidenceCollector.getModifiedFiles().length,
             isProofModeActive: !!this.sessionConfig.proofMode,
+            isPlanModeActive: this.sessionConfig.permissionMode === 'plan',
             recentMessages: this.messages,
           });
 
