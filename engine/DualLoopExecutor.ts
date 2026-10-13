@@ -13,15 +13,18 @@ export class DualLoopExecutor {
       return requestedModel;
     }
 
-    // Fast Explorer mapping
+    // Fast Explorer mapping (lightweight, rapid reconnaissance & search)
     if (requestedModel.includes('claude-3-7') || requestedModel.includes('claude-3-5-sonnet')) {
       return 'claude-3-5-haiku-20241022';
     }
-    if (requestedModel.includes('gpt-4o') || requestedModel.includes('o3-mini')) {
+    if (requestedModel.includes('gpt-4o') || requestedModel.includes('o3-mini') || requestedModel.includes('o1')) {
       return 'gpt-4o-mini';
     }
-    if (requestedModel.includes('gemini-2.0-pro') || requestedModel.includes('gemini-1.5-pro')) {
-      return 'gemini-2.0-flash';
+    if (requestedModel.includes('gemini-2.5-pro') || requestedModel.includes('gemini-1.5-pro') || requestedModel.includes('gemini-2.0-pro')) {
+      return 'gemini-2.5-flash';
+    }
+    if (requestedModel.includes('deepseek-reasoner')) {
+      return 'deepseek-chat';
     }
 
     return requestedModel;
