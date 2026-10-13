@@ -1180,6 +1180,8 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(modeCommand);
   registry.register(planCommand);
   registry.register(turnsCommand);
+  registry.register(fastCommand);
+  registry.register(thinkCommand);
   registry.register(compactCommand);
   registry.register(rewindCommand);
   registry.register(initCommand);
