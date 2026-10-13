@@ -407,7 +407,9 @@ program
     // Launch Ink Terminal UI
     render(React.createElement(App, { queryEngine, initialPrompt }), {
       stdout: safeStdout as unknown as NodeJS.WriteStream,
+      exitOnCtrlC: false,
     });
+
   });
 
 program.parse(process.argv);

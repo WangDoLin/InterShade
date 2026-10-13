@@ -417,6 +417,14 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   /**
+   * Returns whether the agent is actively executing a task.
+   */
+  public getIsRunning(): boolean {
+    return this.isRunning;
+  }
+
+
+  /**
    * Sanitizes and formats raw provider errors into clear, concise, actionable messages.
    * Strips lengthy JSON error payloads, URLs, and stack traces to avoid terminal viewport overflow.
    */

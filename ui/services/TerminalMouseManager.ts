@@ -68,8 +68,8 @@ export class TerminalMouseManager extends EventEmitter {
     // Safety exit hooks to restore terminal mouse mode
     const cleanup = () => this.disable();
     process.once('exit', cleanup);
-    process.once('SIGINT', cleanup);
     process.once('SIGTERM', cleanup);
+
   }
 
   /**

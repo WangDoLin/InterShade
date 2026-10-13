@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Static, useApp } from 'ink';
+import { Box, Static, useApp, useInput } from 'ink';
 import { randomUUID } from 'crypto';
+
 import { Header } from './components/Header.js';
 import { StatusLine } from './components/StatusLine.js';
 import { MessageView } from './components/MessageView.js';
@@ -67,18 +68,61 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   isBusyRef.current = isBusy;
   const queuedPromptRef = useRef<string | null>(null);
   const handleUserSubmitRef = useRef<(p: string) => Promise<void>>(async () => {});
+  const lastAbortTimeRef = useRef(0);
 
   const handleAbort = useCallback(() => {
-    if (isBusyRef.current) {
+    const now = Date.now();
+    if (now - lastAbortTimeRef.current < 250) {
+      return; // Debounce rapid multi-source triggers
+    }
+    lastAbortTimeRef.current = now;
+
+    const isRunning = isBusyRef.current || queryEngine.getIsRunning();
+
+    if (isRunning) {
+      // Abort in-flight agent task while preserving the InterShader session
       if (queuedPromptRef.current) {
         queuedPromptRef.current = null;
         setQueuedPrompt(null);
       }
+      if (pendingPermission) {
+        pendingPermission.respond(false, false);
+        setPendingPermission(null);
+      }
+
+      setIsBusy(false);
+      isBusyRef.current = false;
+      setCurrentToolName(null);
+      setProgressText(null);
+
       queryEngine.abort();
+
+      setMessages([...queryEngine.getMessages()]);
+      setContextTokens(queryEngine.getContextTokens());
     } else {
+      // Agent is idle: Exit the InterShader CLI session cleanly
       exit();
     }
-  }, [queryEngine, exit]);
+  }, [queryEngine, exit, pendingPermission]);
+
+  // Global Ctrl+C key interception via Ink useInput
+  useInput((input, key) => {
+    if (key.ctrl && (input === 'c' || input === 'C')) {
+      handleAbort();
+    }
+  });
+
+  // Global process-level SIGINT listener (handles OS signals, terminal break events)
+  useEffect(() => {
+    const onSigInt = () => {
+      handleAbort();
+    };
+    process.on('SIGINT', onSigInt);
+    return () => {
+      process.off('SIGINT', onSigInt);
+    };
+  }, [handleAbort]);
+
 
   const handleClearQueue = useCallback(() => {
     queuedPromptRef.current = null;
