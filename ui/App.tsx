@@ -169,27 +169,63 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   }, [queryEngine]);
 
   useEffect(() => {
+    // 35ms UI render throttler (~28 FPS) to prevent terminal cursor stutter and 100% CPU on high-frequency stream chunks
+    let lastRenderTime = 0;
+    let pendingProgressText: string | null = null;
+    let throttleTimer: NodeJS.Timeout | null = null;
+
+    const flushProgress = () => {
+      if (pendingProgressText !== null) {
+        setProgressText(pendingProgressText);
+      }
+      setContextTokens(queryEngine.getContextTokens());
+      lastRenderTime = Date.now();
+      throttleTimer = null;
+    };
+
+    const scheduleProgressUpdate = (cleanText?: string) => {
+      if (cleanText !== undefined) {
+        pendingProgressText = cleanText;
+      }
+      const now = Date.now();
+      const elapsed = now - lastRenderTime;
+      if (elapsed >= 35) {
+        if (throttleTimer) {
+          clearTimeout(throttleTimer);
+          throttleTimer = null;
+        }
+        flushProgress();
+      } else if (!throttleTimer) {
+        throttleTimer = setTimeout(flushProgress, 35 - elapsed);
+      }
+    };
+
     // Listen to QueryEngine events
     const handleText = (delta?: string) => {
       if (delta) {
         const clean = delta.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
         if (clean) {
-          setProgressText(clean.length > 70 ? `${clean.slice(-67)}...` : clean);
+          scheduleProgressUpdate(clean.length > 70 ? `${clean.slice(-67)}...` : clean);
+          return;
         }
       }
-      setContextTokens(queryEngine.getContextTokens());
+      scheduleProgressUpdate();
     };
 
     const handleThought = (delta?: string) => {
       if (delta) {
         const clean = delta.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
         if (clean) {
-          setProgressText(clean.length > 70 ? `${clean.slice(0, 67)}...` : clean);
+          scheduleProgressUpdate(clean.length > 70 ? `${clean.slice(0, 67)}...` : clean);
         }
       }
     };
 
     const handleToolStart = (name: string) => {
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
       setCurrentToolName(name);
       setProgressText(null);
       setMessages([...queryEngine.getMessages()]);
@@ -197,10 +233,14 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     };
 
     const handleToolProgress = (progress: string) => {
-      setProgressText(progress);
+      scheduleProgressUpdate(progress);
     };
 
     const handleToolDone = () => {
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
       setCurrentToolName(null);
       setProgressText(null);
       setMessages([...queryEngine.getMessages()]);
@@ -213,6 +253,10 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     };
 
     const handleDone = () => {
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+        throttleTimer = null;
+      }
       setIsBusy(false);
       isBusyRef.current = false;
       setCurrentToolName(null);
