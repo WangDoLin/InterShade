@@ -22,14 +22,24 @@ export class GeminiProvider extends BaseProvider {
       parameters: zodToJsonSchema(t.inputSchema),
     }));
 
+    const effectiveModel = GeminiProvider.normalizeModelName(model);
+
+    const generationConfig: Record<string, any> = {
+      temperature: temperature ?? 0.2,
+      maxOutputTokens: params.maxTokens ?? 16384,
+    };
+
+    if (params.thinkingBudget !== undefined && params.thinkingBudget > 0) {
+      generationConfig.thinkingConfig = {
+        thinkingBudget: params.thinkingBudget,
+      };
+    }
+
     const geminiModel = this.genAI.getGenerativeModel({
-      model: model || 'gemini-2.5-flash',
+      model: effectiveModel,
       systemInstruction: systemPrompt,
       tools: functionDeclarations.length > 0 ? [{ functionDeclarations: functionDeclarations as any }] : undefined,
-      generationConfig: {
-        temperature: temperature ?? 0.2,
-        maxOutputTokens: params.maxTokens ?? 16384,
-      },
+      generationConfig,
     });
 
     // Convert message history to Gemini Contents with strict functionCall/functionResponse pairing
@@ -169,14 +179,24 @@ export class GeminiProvider extends BaseProvider {
     let toolCallCounter = 0;
 
     for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) {
-        yield { type: 'text_delta', delta: text };
-      }
-
       const candidateParts = chunk.candidates?.[0]?.content?.parts || [];
+      let hadPartText = false;
+
       for (const part of candidateParts) {
-        const fc = (part as any).functionCall;
+        const p = part as any;
+
+        // Extract thought / reasoning trace
+        if (p.thought === true || p.thoughtSignature) {
+          if (p.text) {
+            yield { type: 'thought_delta', delta: p.text };
+            hadPartText = true;
+          }
+        } else if (p.text && !p.functionCall) {
+          yield { type: 'text_delta', delta: p.text };
+          hadPartText = true;
+        }
+
+        const fc = p.functionCall;
         if (fc) {
           hasFunctionCall = true;
           toolCallCounter++;
@@ -184,10 +204,22 @@ export class GeminiProvider extends BaseProvider {
             id: fc.id || `gemini_call_${Date.now()}_${toolCallCounter}`,
             name: fc.name,
             arguments: (fc.args as Record<string, unknown>) || {},
-            thoughtSignature: (part as any).thoughtSignature,
+            thoughtSignature: p.thoughtSignature,
           };
           yield { type: 'tool_call_start', id: toolCall.id, name: toolCall.name };
           yield { type: 'tool_call_done', toolCall };
+        }
+      }
+
+      // Fallback: if candidate parts didn't yield text directly, use chunk.text()
+      if (!hadPartText) {
+        try {
+          const text = chunk.text();
+          if (text) {
+            yield { type: 'text_delta', delta: text };
+          }
+        } catch {
+          // chunk.text() throws if chunk only contains functionCall
         }
       }
     }
@@ -206,5 +238,13 @@ export class GeminiProvider extends BaseProvider {
     }
 
     yield { type: 'finish', reason: hasFunctionCall ? 'tool_use' : 'end_turn' };
+  }
+
+  static normalizeModelName(rawModel?: string): string {
+    if (!rawModel) return 'gemini-2.5-flash';
+    const m = rawModel.trim().toLowerCase();
+    if (m === 'gemini-flash' || m === 'flash') return 'gemini-2.5-flash';
+    if (m === 'gemini-pro' || m === 'pro') return 'gemini-2.5-pro';
+    return rawModel.trim();
   }
 }
