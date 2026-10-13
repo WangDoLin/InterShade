@@ -343,4 +343,61 @@ export class SkillRegistry {
       auditReport,
     };
   }
+
+  /**
+   * Intelligently match and rank registered skills against a user intent, prompt, or task description.
+   */
+  matchSkillsByIntent(intent: string, maxResults = 3): SkillSummary[] {
+    if (!intent || typeof intent !== 'string') {
+      return [];
+    }
+
+    const intentLower = intent.toLowerCase();
+    const catalog = this.getSkillCatalog();
+    const scored: Array<{ skill: SkillSummary; score: number }> = [];
+
+    for (const skill of catalog) {
+      let score = 0;
+      const skillNameLower = skill.name.toLowerCase();
+      const descLower = skill.description.toLowerCase();
+
+      // Exact name match
+      if (intentLower.includes(skillNameLower) || skillNameLower.includes(intentLower)) {
+        score += 10;
+      }
+
+      // Tag matching
+      if (skill.tags && skill.tags.length > 0) {
+        for (const tag of skill.tags) {
+          const tagLower = tag.toLowerCase();
+          if (intentLower.includes(tagLower)) {
+            score += 4;
+          }
+        }
+      }
+
+      // Keyword matching in description
+      const words = intentLower.split(/\s+/).filter((w) => w.length > 2);
+      for (const w of words) {
+        if (descLower.includes(w)) {
+          score += 1;
+        }
+      }
+
+      if (score > 0) {
+        scored.push({ skill, score });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, maxResults).map((s) => s.skill);
+  }
+
+  /**
+   * Retrieves instructions markdown body for a specific skill name.
+   */
+  getSkillInstructions(name: string): string | null {
+    const pkg = this.getSkill(name);
+    return pkg ? pkg.content : null;
+  }
 }

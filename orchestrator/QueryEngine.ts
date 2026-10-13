@@ -27,6 +27,7 @@ import { ProofEngine } from '../engine/verification/ProofEngine.js';
 import { PlanManager } from '../state/PlanManager.js';
 import { ModelRouter } from './ModelRouter.js';
 import { AutonomousContinuationGuard } from '../engine/guards/AutonomousContinuationGuard.js';
+import { SkillRegistry } from '../services/skills/SkillRegistry.js';
 import type { BaseProvider } from '../providers/BaseProvider.js';
 import { config } from '../config/index.js';
 
@@ -101,6 +102,8 @@ export class QueryEngine extends EventEmitter {
   private isExplorationPhase = true;
   private currentContextTokens = 0;
   private continuationGuard = new AutonomousContinuationGuard();
+  private skillRegistry: SkillRegistry;
+  private activeSkillName: string | null = null;
 
   constructor(sessionConfig: SessionConfig) {
     super();
@@ -109,6 +112,7 @@ export class QueryEngine extends EventEmitter {
     this.hookEngine = new HookEngine();
     this.evidenceCollector = new VerificationEvidenceCollector();
     this.permissionEngine = new PermissionEngine(sessionConfig.permissionMode);
+    this.skillRegistry = new SkillRegistry(sessionConfig.cwd);
 
     // Session restoration or creation logic
     const shouldResume = sessionConfig.resumeSession !== false;
@@ -297,6 +301,19 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   private buildFullSystemContent(): string {
+    const availableSkills = this.skillRegistry.getSkillCatalog().map((s) => ({
+      name: s.name,
+      description: s.description,
+      tags: s.tags,
+    }));
+
+    const activeSkillWorkflow = this.activeSkillName
+      ? {
+          name: this.activeSkillName,
+          instructions: this.skillRegistry.getSkillInstructions(this.activeSkillName) || '',
+        }
+      : null;
+
     const { staticBlock, dynamicBlock } = PromptCacheManager.buildPromptCacheBlocks(
       this.getBasePrompt(),
       this.toolRegistry.getActiveTools(),
@@ -306,6 +323,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         sessionDate: new Date().toISOString().split('T')[0],
         modifiedFiles: this.getSessionModifiedFiles(),
         activePlan: PlanManager.getActivePlan(this.sessionState.id),
+        availableSkills,
+        activeSkillWorkflow,
       }
     );
     return `${staticBlock.text}\n${dynamicBlock.text}`;
@@ -429,6 +448,28 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   /**
+   * Sets or clears the active engineering skill workflow for this session.
+   */
+  setActiveSkill(skillName: string | null): void {
+    this.activeSkillName = skillName;
+    this.refreshSystemPrompt();
+  }
+
+  /**
+   * Returns currently active engineering skill name, if any.
+   */
+  getActiveSkill(): string | null {
+    return this.activeSkillName;
+  }
+
+  /**
+   * Returns the underlying SkillRegistry instance.
+   */
+  getSkillRegistry(): SkillRegistry {
+    return this.skillRegistry;
+  }
+
+  /**
    * Resets the current conversation session and creates a brand new session in SessionStore.
    * If deleteCurrent is true, the old session and its history are permanently deleted from SQLite WAL.
    */
@@ -439,10 +480,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       SessionStore.deleteSession(oldSessionId);
     }
 
-    // Abort any in-progress requests
     this.abort();
     this.isRunning = false;
     this.isExplorationPhase = true;
+    this.activeSkillName = null;
 
     // Create a new session in SessionStore with fresh UUID
     const newSession = SessionStore.createSession({
@@ -849,6 +890,13 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     this.abortController = new AbortController();
 
     try {
+      if (!this.activeSkillName) {
+        const matched = this.skillRegistry.matchSkillsByIntent(userPrompt, 1);
+        if (matched.length > 0) {
+          this.activeSkillName = matched[0].name;
+        }
+      }
+
       this.reconcileDanglingToolCalls();
       this.refreshSystemPrompt();
 

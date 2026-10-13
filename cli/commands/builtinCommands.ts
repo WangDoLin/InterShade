@@ -7,6 +7,8 @@ import os from 'os';
 import { getDatabase } from '../../state/Database.js';
 import { FtsMemoryService } from '../../services/memory/FtsMemoryService.js';
 import { SkillCrystallizer } from '../../services/skills/SkillCrystallizer.js';
+import { SkillRegistry } from '../../services/skills/SkillRegistry.js';
+import { SkillSecurityAuditor } from '../../services/skills/SkillSecurityAuditor.js';
 import { ShadowWorktree } from '../../security/ShadowWorktree.js';
 import { ClaudeAgentCoordinator } from '../../services/agent/ClaudeAgentCoordinator.js';
 import type { ToolExecutionContext } from '../../types/index.js';
@@ -808,22 +810,132 @@ export const memoryCommand: LocalCommand = {
   }
 };
 
+function formatSkillCatalogEntry(pkg: { metadata: { name: string; version: string; description: string; tags?: string[] }; tier: string }): string {
+  const tagsStr = pkg.metadata.tags && pkg.metadata.tags.length > 0 ? ` [${pkg.metadata.tags.slice(0, 3).join(', ')}]` : '';
+  return `  - ${pkg.metadata.name} (v${pkg.metadata.version}, ${pkg.tier})${tagsStr}: ${pkg.metadata.description}`;
+}
+
+function handleListSkills(registry: SkillRegistry, cwd: string): string {
+  const discovered = registry.discoverAllSkills();
+  const crystallized = SkillCrystallizer.loadSkills(cwd);
+
+  const lines: string[] = ['InterShader Integrated Skills Ecosystem:'];
+  if (discovered.length === 0) {
+    lines.push('  No structured skills registered in skills/ directories.');
+  } else {
+    lines.push(`Discovered Skills (${discovered.length}):`);
+    for (const s of discovered) {
+      lines.push(formatSkillCatalogEntry(s));
+    }
+  }
+
+  if (crystallized.length > 0) {
+    lines.push(`\nAutonomously Crystallized Skills (${crystallized.length}):`);
+    for (const sk of crystallized) {
+      lines.push(`  - [${sk.name}] Triggers: [${sk.intentTriggers.slice(0, 4).join(', ')}] (${(sk.confidence * 100).toFixed(0)}%)`);
+    }
+  }
+
+  lines.push('\nUsage: /skills info <name> | /skills audit [name] | /skills activate <name>');
+  return lines.join('\n');
+}
+
+function handleSkillInfo(registry: SkillRegistry, skillName: string): string {
+  if (!skillName) {
+    return 'Error: Please specify skill name. Usage: /skills info <name>';
+  }
+  const pkg = registry.getSkill(skillName);
+  if (!pkg) {
+    return `Skill "${skillName}" not found. Run /skills to see available skills.`;
+  }
+  const meta = pkg.metadata;
+  const caps = Object.entries(meta.capabilities)
+    .filter(([, v]) => Boolean(v))
+    .map(([k]) => k)
+    .join(', ') || 'none';
+
+  const allowedToolsStr = meta.allowedTools && meta.allowedTools.length > 0 ? meta.allowedTools.join(', ') : 'all';
+  const tagsStr = meta.tags && meta.tags.length > 0 ? meta.tags.join(', ') : 'none';
+
+  return [
+    `Skill Specification: ${meta.name}`,
+    `Version:      ${meta.version}`,
+    `Tier:         ${pkg.tier}`,
+    `Description:  ${meta.description}`,
+    `Capabilities: ${caps}`,
+    `Allowed Tools: ${allowedToolsStr}`,
+    `Tags:         ${tagsStr}`,
+    `SHA-256:      ${pkg.contentSha256.slice(0, 16)}...`,
+    `Location:     ${pkg.skillDir}`,
+  ].join('\n');
+}
+
+function handleAuditSkills(registry: SkillRegistry, targetSkill?: string): string {
+  const allSkills = registry.discoverAllSkills();
+  const toAudit = targetSkill
+    ? allSkills.filter((s) => s.metadata.name.toLowerCase() === targetSkill.toLowerCase())
+    : allSkills;
+
+  if (toAudit.length === 0) {
+    return targetSkill
+      ? `Skill "${targetSkill}" not found to audit.`
+      : 'No skills found in registry to audit.';
+  }
+
+  const reports = toAudit.map((s) => SkillSecurityAuditor.auditSkill(s));
+  const passedCount = reports.filter((r) => r.passed).length;
+  const lines: string[] = [
+    `Skill Security Audit (${passedCount}/${reports.length} PASSED):`,
+  ];
+
+  for (const r of reports) {
+    const status = r.passed ? '[PASS]' : `[FAIL: ${r.maxSeverity}]`;
+    lines.push(`  ${status} ${r.skillName} (Findings: ${r.findings.length})`);
+    for (const f of r.findings) {
+      lines.push(`    * [${f.severity}] ${f.ruleId}: ${f.message}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function handleActivateSkill(registry: SkillRegistry, skillName: string, sessionState: Record<string, unknown>): string {
+  if (!skillName) {
+    return 'Error: Please specify skill name to activate. Usage: /skills activate <name>';
+  }
+  const pkg = registry.getSkill(skillName);
+  if (!pkg) {
+    return `Skill "${skillName}" not found. Run /skills to see available skills.`;
+  }
+  sessionState.activeSkill = pkg.metadata.name;
+  return [
+    `Skill Activated: [${pkg.metadata.name}] (v${pkg.metadata.version})`,
+    `Description: ${pkg.metadata.description}`,
+    `Full procedural instructions and workflow checklist are now primed for upcoming queries.`,
+  ].join('\n');
+}
+
 export const skillsCommand: LocalCommand = {
   name: 'skills',
-  description: 'List or discover autonomously crystallized pipeline skills',
+  description: 'List, inspect, audit, or activate autonomous development skills',
   type: 'local',
   aliases: ['skill'],
   execute: (ctx) => {
-    const skills = SkillCrystallizer.loadSkills(ctx.cwd);
-    if (skills.length === 0) {
-      return 'No crystallized skills found in .intershader/skills/. Complete successful 10-stage tasks to automatically synthesize skills.';
-    }
+    const sub = ctx.args[0]?.toLowerCase();
+    const arg = ctx.args[1];
+    const registry = new SkillRegistry(ctx.cwd);
 
-    const lines: string[] = [`Autonomously Crystallized Skills (${skills.length}):`];
-    for (const sk of skills) {
-      lines.push(`- [${sk.name}] Triggers: [${sk.intentTriggers.slice(0, 4).join(', ')}] (Confidence: ${(sk.confidence * 100).toFixed(0)}%)`);
+    switch (sub) {
+      case 'info':
+        return handleSkillInfo(registry, arg);
+      case 'audit':
+        return handleAuditSkills(registry, arg);
+      case 'activate':
+      case 'use':
+        return handleActivateSkill(registry, arg, ctx.sessionState);
+      case 'list':
+      default:
+        return handleListSkills(registry, ctx.cwd);
     }
-    return lines.join('\n');
   }
 };
 

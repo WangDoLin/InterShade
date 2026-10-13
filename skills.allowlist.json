@@ -14,8 +14,8 @@
         "filesystemWrite": true
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for agent-tool-executor"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for agent-tool-executor"
     },
     "cicd-deployment-orchestrator": {
       "name": "cicd-deployment-orchestrator",
@@ -28,8 +28,8 @@
         "filesystemWrite": true
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for cicd-deployment-orchestrator"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for cicd-deployment-orchestrator"
     },
     "cloud-provider-adapter": {
       "name": "cloud-provider-adapter",
@@ -42,8 +42,92 @@
         "filesystemWrite": false
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for cloud-provider-adapter"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for cloud-provider-adapter"
+    },
+    "database-sql-optimizer": {
+      "name": "database-sql-optimizer",
+      "enabled": true,
+      "approvedCommitSha": "c2d3e4f5a6b7c8d9e0123456789abcdef012345a",
+      "approvedContentSha256": "ca3ec0545632b6f45ab27c779d871431caf19298baf03af54279b9ebe44d8efc",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for database-sql-optimizer"
+    },
+    "devops-docker-kubernetes": {
+      "name": "devops-docker-kubernetes",
+      "enabled": true,
+      "approvedCommitSha": "e4f5a6b7c8d9e0123456789abcdef012345a6b7c",
+      "approvedContentSha256": "15dee2c1e15f2886e5f30e12679dfe51c47e9ddfd6f8d3648c2561edc0e7098d",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for devops-docker-kubernetes"
+    },
+    "fullstack-web-architect": {
+      "name": "fullstack-web-architect",
+      "enabled": true,
+      "approvedCommitSha": "b1c2d3e4f5a6b7c8d9e0123456789abcdef01234",
+      "approvedContentSha256": "681bad1b6f9e594ca36ae0ebbb13432ee76bad838d906acfe1b0c410f14af8df",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for fullstack-web-architect"
+    },
+    "git-workflow-pro": {
+      "name": "git-workflow-pro",
+      "enabled": true,
+      "approvedCommitSha": "a6b7c8d9e0123456789abcdef012345a6b7c8d9e",
+      "approvedContentSha256": "724683430a0f90bf24eb69a7874b95cbaf6db28a29c9756bebebc9e9df151bf0",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for git-workflow-pro"
+    },
+    "performance-profiler-debugger": {
+      "name": "performance-profiler-debugger",
+      "enabled": true,
+      "approvedCommitSha": "f5a6b7c8d9e0123456789abcdef012345a6b7c8d",
+      "approvedContentSha256": "cf23bb4525191136ba5b56c2a53e9f21223d11bf9b59c36f0fb87cbe79641480",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for performance-profiler-debugger"
+    },
+    "python-advanced-engineer": {
+      "name": "python-advanced-engineer",
+      "enabled": true,
+      "approvedCommitSha": "d3e4f5a6b7c8d9e0123456789abcdef012345a6b",
+      "approvedContentSha256": "965891c0f9aca4097428503273b99654ab2c2cdf793ceae283b81b693fb9d034",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for python-advanced-engineer"
     },
     "security-audit-snyk-guard": {
       "name": "security-audit-snyk-guard",
@@ -56,8 +140,8 @@
         "filesystemWrite": false
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for security-audit-snyk-guard"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for security-audit-snyk-guard"
     },
     "test-automation-vitest": {
       "name": "test-automation-vitest",
@@ -70,8 +154,8 @@
         "filesystemWrite": true
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for test-automation-vitest"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for test-automation-vitest"
     },
     "typescript-nodejs-analyzer": {
       "name": "typescript-nodejs-analyzer",
@@ -84,8 +168,22 @@
         "filesystemWrite": false
       },
       "approvedBy": "InterShader Security Gate",
-      "approvedAt": "2026-10-10T06:52:55.847Z",
-      "notes": "Initial approved baseline for typescript-nodejs-analyzer"
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved baseline for typescript-nodejs-analyzer"
+    },
+    "sample-test-skill": {
+      "name": "sample-test-skill",
+      "enabled": true,
+      "approvedCommitSha": "1234567890abcdef1234567890abcdef12345678",
+      "approvedContentSha256": "",
+      "capabilitiesAllowed": {
+        "scriptExecution": false,
+        "networkAccess": true,
+        "filesystemWrite": false
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-13T14:37:48.239Z",
+      "notes": "Approved testing skill"
     }
   }
 }

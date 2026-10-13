@@ -25,11 +25,17 @@ export class PromptCacheManager {
       sessionDate: string;
       modifiedFiles?: string[];
       activePlan?: ActivePlan | null;
+      availableSkills?: Array<{ name: string; description: string; tags?: string[] }>;
+      activeSkillWorkflow?: { name: string; instructions: string } | null;
     }
   ): { staticBlock: CacheBlock; dynamicBlock: CacheBlock } {
-    // 1. Static Prefix: System rules, guidelines, tool specifications
+    // 1. Static Prefix: System rules, guidelines, tool specifications & skill catalog
     const toolSummary = tools.map((t) => `${t.name}: ${t.description}`).join('\n');
-    const staticText = `${systemPrompt}\n\n# Available Tool Capabilities\n${toolSummary}`;
+    const skillsSummary =
+      dynamicContext.availableSkills && dynamicContext.availableSkills.length > 0
+        ? `\n\n# Available Engineering Skills (Domain-Specific Workflows)\n${dynamicContext.availableSkills.map((s) => `- ${s.name}: ${s.description}${s.tags && s.tags.length > 0 ? ` [Tags: ${s.tags.join(', ')}]` : ''}`).join('\n')}`
+        : '';
+    const staticText = `${systemPrompt}\n\n# Available Tool Capabilities\n${toolSummary}${skillsSummary}`;
 
     const staticBlock: CacheBlock = {
       type: 'text',
@@ -47,7 +53,11 @@ export class PromptCacheManager {
       ? `\n\n# Active Architecture & Implementation Plan (Version ${dynamicContext.activePlan.currentVersion})\n${PlanManager.formatPlanMarkdown(dynamicContext.activePlan, { showChangelog: true })}`
       : '';
 
-    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}${planSection}`;
+    const activeSkillSection = dynamicContext.activeSkillWorkflow
+      ? `\n\n# Active Engineering Skill: ${dynamicContext.activeSkillWorkflow.name}\n${dynamicContext.activeSkillWorkflow.instructions}`
+      : '';
+
+    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}${planSection}${activeSkillSection}`;
 
     const dynamicBlock: CacheBlock = {
       type: 'text',

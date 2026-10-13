@@ -1,4 +1,15 @@
-export type ClaudeAgentRoleType = 'explore' | 'plan' | 'general' | 'verification' | 'counterexample';
+export type ClaudeAgentRoleType =
+  | 'explore'
+  | 'plan'
+  | 'general'
+  | 'verification'
+  | 'counterexample'
+  | 'architect'
+  | 'coder'
+  | 'reviewer'
+  | 'tester'
+  | 'profiler'
+  | 'workflow';
 
 export interface ClaudeAgentRoleDefinition {
   readonly role: ClaudeAgentRoleType;
@@ -100,12 +111,96 @@ export const COUNTEREXAMPLE_AGENT_ROLE: ClaudeAgentRoleDefinition = {
   ].join('\n')
 };
 
+export const ARCHITECT_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'architect',
+  name: 'System Architecture Specialist',
+  description: 'Specialist for high-level system design, modular boundaries, schema modeling, and interface contracts.',
+  isReadOnly: true,
+  allowedTools: ['file_read', 'grep_search', 'lsp_query', 'skill_discover'],
+  systemPrompt: [
+    'You are the System Architect for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Analyze technical requirements, define modular boundaries, prevent circular dependencies, and establish interface contracts.',
+  ].join('\n'),
+};
+
+export const CODER_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'coder',
+  name: 'Surgical Implementation Specialist',
+  description: 'Specialist for laser-focused implementation, single responsibility functions, clean code, and minimal diffs.',
+  isReadOnly: false,
+  allowedTools: ['file_read', 'file_edit', 'file_write', 'grep_search', 'glob_find'],
+  systemPrompt: [
+    'You are the Surgical Coder for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Implement code with surgical precision. Keep functions under 50 lines, avoid magic numbers, and do not wander.',
+  ].join('\n'),
+};
+
+export const REVIEWER_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'reviewer',
+  name: 'Code Review & Security Inspector',
+  description: 'Specialist for static analysis, security audits, code cleanliness, boundary condition verification, and convention checks.',
+  isReadOnly: true,
+  allowedTools: ['file_read', 'grep_search', 'lsp_query'],
+  systemPrompt: [
+    'You are the Senior Code Reviewer for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Review code for logic defects, security vulnerabilities, performance regressions, and architectural consistency.',
+  ].join('\n'),
+};
+
+export const TESTER_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'tester',
+  name: 'Automated Testing Specialist',
+  description: 'Specialist for automated unit, integration, and regression test suites with empirical verification proof.',
+  isReadOnly: false,
+  allowedTools: ['file_read', 'file_write', 'file_edit', 'run_shell_command', 'grep_search'],
+  systemPrompt: [
+    'You are the Test Automation Specialist for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Author deterministic unit tests, probe edge cases, execute test runners, and provide empirical proof of correctness.',
+  ].join('\n'),
+};
+
+export const PROFILER_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'profiler',
+  name: 'Performance & Resource Profiler',
+  description: 'Specialist for identifying CPU bottlenecks, memory leaks, event loop lag, and cache inefficiency.',
+  isReadOnly: true,
+  allowedTools: ['file_read', 'grep_search', 'run_shell_command'],
+  systemPrompt: [
+    'You are the Performance Profiler for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Profile execution bottlenecks, identify memory retention leaks, and recommend high-efficiency caching strategies.',
+  ].join('\n'),
+};
+
+export const WORKFLOW_AGENT_ROLE: ClaudeAgentRoleDefinition = {
+  role: 'workflow',
+  name: 'Full 4-Step Workflow Coordinator',
+  description: 'Autonomous end-to-end coordinator running Explore -> Plan -> Implement -> Verify pipeline.',
+  isReadOnly: false,
+  allowedTools: ['file_read', 'file_edit', 'file_write', 'grep_search', 'glob_find', 'run_shell_command'],
+  systemPrompt: [
+    'You are the Full 4-Step Workflow Coordinator for InterShader.',
+    LANGUAGE_DIRECTIVE,
+    'Execute comprehensive end-to-end development workflows through iterative recon, planning, execution, and verification.',
+  ].join('\n'),
+};
+
 export const CLAUDE_AGENT_ROLES: Record<ClaudeAgentRoleType, ClaudeAgentRoleDefinition> = {
   explore: EXPLORE_AGENT_ROLE,
   plan: PLAN_AGENT_ROLE,
   general: GENERAL_PURPOSE_AGENT_ROLE,
   verification: VERIFICATION_AGENT_ROLE,
   counterexample: COUNTEREXAMPLE_AGENT_ROLE,
+  architect: ARCHITECT_AGENT_ROLE,
+  coder: CODER_AGENT_ROLE,
+  reviewer: REVIEWER_AGENT_ROLE,
+  tester: TESTER_AGENT_ROLE,
+  profiler: PROFILER_AGENT_ROLE,
+  workflow: WORKFLOW_AGENT_ROLE,
 };
 
 export function getClaudeAgentRole(role: ClaudeAgentRoleType): ClaudeAgentRoleDefinition {

@@ -10,12 +10,12 @@ export interface SubagentArgs {
   contextHints?: string;
   workerName?: string;
   runInBackground?: boolean;
-  agentRole?: 'explore' | 'plan' | 'general' | 'verification' | 'workflow';
+  agentRole?: ClaudeAgentRoleType;
 }
 
 export class SubagentTool extends BaseTool<SubagentArgs, string> {
   readonly name = 'delegate_subagent';
-  readonly description = 'Delegate a specialized agent step (explore, plan, general, verification, workflow) to an isolated Subagent communicating via Mailbox.';
+  readonly description = 'Delegate a specialized agent step (explore, plan, general, verification, workflow, architect, coder, reviewer, tester, profiler) to an isolated Subagent communicating via Mailbox.';
   readonly isReadOnly = false;
   readonly isDestructive = false;
   readonly requiresPermission = true;
@@ -36,9 +36,9 @@ export class SubagentTool extends BaseTool<SubagentArgs, string> {
     workerName: z.string().optional().describe('Unique name/identity for this worker agent (e.g. worker-1, tester)'),
     runInBackground: z.boolean().optional().describe('Whether to run asynchronously in background without blocking coordinator'),
     agentRole: z
-      .enum(['explore', 'plan', 'general', 'verification', 'workflow'])
+      .enum(['explore', 'plan', 'general', 'verification', 'workflow', 'architect', 'coder', 'reviewer', 'tester', 'profiler'])
       .optional()
-      .describe('Claude Code specialized agent step: explore (read-only recon), plan (architecture), general (implementation), verification (adversarial testing), workflow (full 4-step)'),
+      .describe('Claude Code specialized agent step: explore, plan, general, verification, workflow, architect, coder, reviewer, tester, profiler'),
   });
 
   async execute(args: SubagentArgs, context: ToolExecutionContext): Promise<string> {
@@ -124,10 +124,10 @@ export class SubagentTool extends BaseTool<SubagentArgs, string> {
       ].join('\n');
     }
 
-    // General implementation
-    const roleDef = getClaudeAgentRole('general');
+    // Specialized / General implementation
+    const roleDef = getClaudeAgentRole(role);
     return (
-      `[GENERAL AGENT TASK COMPLETED]:\n` +
+      `[${role.toUpperCase()} AGENT TASK COMPLETED]:\n` +
       `- Worker: ${workerId} (${roleDef.name})\n` +
       `- Goal: "${args.taskGoal}"\n` +
       `- Status: Applied modifications in workspace.`

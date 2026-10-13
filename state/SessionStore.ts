@@ -136,7 +136,8 @@ export class SessionStore {
     };
   }
 
-  static findLatestSession(cwd: string): SessionState | null {
+  static findLatestSession(cwd?: string): SessionState | null {
+    const targetCwd = cwd || process.cwd();
     const db = getDatabase();
     const stmt = db.prepare(`
       SELECT id, title, model, provider, cwd, permission_mode, total_input_tokens, total_output_tokens, total_cost_usd, created_at, updated_at
@@ -145,7 +146,7 @@ export class SessionStore {
       ORDER BY updated_at DESC
       LIMIT 1
     `);
-    const row = stmt.get(cwd) as {
+    const row = stmt.get(targetCwd) as {
       id: string;
       title: string;
       model: string;
