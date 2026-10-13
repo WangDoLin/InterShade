@@ -758,6 +758,9 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             this.currentContextTokens = event.inputTokens;
             this.sessionState.totalInputTokens += event.inputTokens;
             this.sessionState.totalOutputTokens += event.outputTokens;
+            if (event.cacheReadTokens) {
+              this.sessionState.totalCachedTokens = (this.sessionState.totalCachedTokens || 0) + event.cacheReadTokens;
+            }
             const costDelta = calculateModelCost(event.inputTokens, event.outputTokens, model);
             this.sessionState.totalCostUsd += costDelta;
             SessionStore.updateUsage(this.sessionState.id, event.inputTokens, event.outputTokens, costDelta);
