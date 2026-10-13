@@ -602,6 +602,59 @@ export const fastCommand: LocalCommand = {
 
 
 
+export const thinkCommand: LocalCommand = {
+  name: 'think',
+  description: 'View or set thinking budget tier (/think [off|low|med|high|tokens])',
+  type: 'local',
+  aliases: ['thinking', 'budget'],
+  execute: (ctx) => {
+    const st = ctx.sessionState as Record<string, unknown>;
+    const arg = ctx.args[0]?.toLowerCase();
+
+    if (!arg) {
+      const current = typeof st.thinkingBudget === 'number' ? st.thinkingBudget : 'Adaptive / Default';
+      return [
+        `Current Thinking Budget: ${current}`,
+        '',
+        'Available Tiers:',
+        '  /think off      - 0 tokens (Instant direct output, zero reasoning delay)',
+        '  /think low      - 1,024 tokens (Fast coding & quick syntax decisions)',
+        '  /think med      - 4,096 tokens (Balanced architectural review)',
+        '  /think high     - 8,192 tokens (Deep root-cause reasoning)',
+        '  /think <number> - Custom token budget (e.g. /think 2048)',
+      ].join('\n');
+    }
+
+    if (arg === 'off' || arg === '0' || arg === 'none') {
+      st.thinkingBudget = 0;
+      return 'Thinking budget set to: 0 tokens (Direct generation mode).';
+    }
+
+    if (arg === 'low' || arg === 'min') {
+      st.thinkingBudget = 1024;
+      return 'Thinking budget set to: 1,024 tokens (Low latency tier).';
+    }
+
+    if (arg === 'med' || arg === 'medium') {
+      st.thinkingBudget = 4096;
+      return 'Thinking budget set to: 4,096 tokens (Medium balanced tier).';
+    }
+
+    if (arg === 'high' || arg === 'max') {
+      st.thinkingBudget = 8192;
+      return 'Thinking budget set to: 8,192 tokens (High deep reasoning tier).';
+    }
+
+    const parsed = parseInt(arg, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      st.thinkingBudget = parsed;
+      return `Thinking budget updated to: ${parsed} tokens.`;
+    }
+
+    return 'Invalid thinking tier. Usage: /think [off|low|med|high|<number>]';
+  }
+};
+
 export const compactCommand: PromptCommand = {
   name: 'compact',
   description: 'Actively trigger context compaction and summarize conversation history',
