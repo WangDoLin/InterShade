@@ -1,4 +1,5 @@
 import type { ToolDefinition } from '../types/index.js';
+import { PlanManager, type ActivePlan } from '../state/PlanManager.js';
 
 export interface CacheBlock {
   type: 'text';
@@ -23,6 +24,7 @@ export class PromptCacheManager {
       model: string;
       sessionDate: string;
       modifiedFiles?: string[];
+      activePlan?: ActivePlan | null;
     }
   ): { staticBlock: CacheBlock; dynamicBlock: CacheBlock } {
     // 1. Static Prefix: System rules, guidelines, tool specifications
@@ -41,7 +43,11 @@ export class PromptCacheManager {
         ? `\n\n# Confirmed Modified Files in This Session\n${dynamicContext.modifiedFiles.map((f) => `- ${f}`).join('\n')}`
         : '\n\n# Confirmed Modified Files in This Session\n(None yet)';
 
-    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}`;
+    const planSection = dynamicContext.activePlan
+      ? `\n\n# Active Architecture & Implementation Plan (Version ${dynamicContext.activePlan.currentVersion})\n${PlanManager.formatPlanMarkdown(dynamicContext.activePlan, { showChangelog: true })}`
+      : '';
+
+    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}${planSection}`;
 
     const dynamicBlock: CacheBlock = {
       type: 'text',

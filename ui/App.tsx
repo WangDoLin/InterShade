@@ -12,6 +12,7 @@ import { HistoryInspectionView } from './components/HistoryInspectionView.js';
 import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
 import { TerminalMouseManager } from './services/TerminalMouseManager.js';
 import { extractPromptTurns, truncatePromptText } from './utils/turnExtractor.js';
+import { PlanManager } from '../state/PlanManager.js';
 import type { QueryEngine } from '../orchestrator/QueryEngine.js';
 import type { UnifiedMessage, PermissionRequest } from '../types/index.js';
 
@@ -426,6 +427,37 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       queryEngine.appendSyntheticMessage(userCmdMsg);
 
       const targetPath = prompt.replace(/^\/plan\s*/, '').trim();
+      const sub = targetPath.toLowerCase();
+
+      if (sub === 'view' || sub === 'show') {
+        const plan = PlanManager.getActivePlan(sessionState.id);
+        const content = plan
+          ? PlanManager.formatPlanMarkdown(plan, { showChangelog: true })
+          : '[PLAN NOTICE]: No active plan has been established for this session yet. Type your planning request or /plan to start.';
+        const planMsg: UnifiedMessage = {
+          id: randomUUID(),
+          role: 'assistant',
+          content,
+          timestamp: Date.now() + 1,
+        };
+        queryEngine.appendSyntheticMessage(planMsg);
+        setMessages([...queryEngine.getMessages()]);
+        return;
+      }
+
+      if (sub === 'reset' || sub === 'clear') {
+        PlanManager.clearPlan(sessionState.id);
+        const resetMsg: UnifiedMessage = {
+          id: randomUUID(),
+          role: 'assistant',
+          content: '[PLAN RESET]: Active plan cleared from session memory. Ready to establish a new plan.',
+          timestamp: Date.now() + 1,
+        };
+        queryEngine.appendSyntheticMessage(resetMsg);
+        setMessages([...queryEngine.getMessages()]);
+        return;
+      }
+
       const currentMode = sessionState.permissionMode;
       const nextMode = currentMode === 'plan' && !targetPath ? 'default' : 'plan';
       queryEngine.setPermissionMode(nextMode);
@@ -433,6 +465,10 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       let noticeText = nextMode === 'plan' ? t('slash.planModeOn') : t('slash.planModeOff');
       if (targetPath) {
         noticeText += `\nTarget Scope: ${targetPath}\nReady for planning. Describe what features or fixes you want to investigate.`;
+      }
+      const activePlan = PlanManager.getActivePlan(sessionState.id);
+      if (activePlan && nextMode === 'plan') {
+        noticeText += `\n\nActive Plan (v${activePlan.currentVersion}): "${activePlan.title}" with ${activePlan.steps.length} steps. Any updates will merge with this plan.`;
       }
 
       const noticeMsg: UnifiedMessage = {
@@ -571,7 +607,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           'InterShader Slash Commands',
           '',
           '[System & Session Controls]',
-          '  /plan        - Toggle Plan Mode (Read-Only)',
+          '  /plan [path|view|reset] - Toggle Plan Mode, inspect active plan, or reset',
           '  /history     - View prompt history turns and shortcuts',
           '  /turn <id>   - Inspect historical prompt turn in rewind viewport',
           '  /return      - Return to latest bottom prompt input',

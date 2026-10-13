@@ -24,6 +24,7 @@ import { HookEngine } from '../services/hooks/HookEngine.js';
 import { ParallelToolDispatcher } from '../engine/ParallelToolDispatcher.js';
 import { VerificationEvidenceCollector } from '../engine/VerificationEvidenceCollector.js';
 import { ProofEngine } from '../engine/verification/ProofEngine.js';
+import { PlanManager } from '../state/PlanManager.js';
 import { config } from '../config/index.js';
 
 function calculateModelCost(inputTokens: number, outputTokens: number, model: string): number {
@@ -213,7 +214,23 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 - To create files: use \`file_write\`.
 - To search files: use \`glob_find\` (never find, ls in shell).
 - To search file contents: use \`grep_search\` (never grep, rg in shell).
-- Reserve \`run_shell_command\` exclusively for commands that require true shell execution (builds, tests, package installation, git).`;
+- Reserve \`run_shell_command\` exclusively for commands that require true shell execution (builds, tests, package installation, git).
+
+# Architectural Planning & Incremental Plan Merging Protocol
+- When asked to plan, formulate an architectural blueprint, or operate in Plan Mode:
+  - Formulate structured plans with:
+    1. Clear goal title
+    2. Ordered atomic implementation steps with specific target file paths
+    3. Verification & acceptance criteria (tests to run, behaviors to check)
+- CRITICAL - When modifying an existing plan (User asks to add features, change approach, or refine):
+  - NEVER discard the previous plan or reply with an isolated disconnected snippet.
+  - You MUST COMBINE AND MERGE the new requirements into the previous plan:
+    - Retain all unaffected steps and mark them [UNCHANGED].
+    - Mark modified steps with [UPDATED].
+    - Mark newly added steps with [NEW].
+  - Include a clear "Plan Changelog" summarizing what changed from the previous revision.
+  - Present the full, unified updated plan so the user has a single cohesive source of truth.
+  - Use the \`plan_mode\` tool with action="update" (or action="create" for initial plans) to persist the revision into session memory.`;
   }
 
   private getSessionModifiedFiles(): string[] {
@@ -232,6 +249,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         model: this.sessionConfig.model,
         sessionDate: new Date().toISOString().split('T')[0],
         modifiedFiles: this.getSessionModifiedFiles(),
+        activePlan: PlanManager.getActivePlan(this.sessionState.id),
       }
     );
     return `${staticBlock.text}\n${dynamicBlock.text}`;
@@ -890,6 +908,29 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         };
         this.messages.push(noticeMsg);
         SessionStore.appendMessage(this.sessionState.id, noticeMsg);
+      }
+
+      // Auto-sync plan if assistant formulated or revised a plan in natural language
+      if (finalAssistantResponse) {
+        const extracted = PlanManager.extractPlanFromText(finalAssistantResponse);
+        if (extracted && extracted.steps.length >= 2) {
+          const existingPlan = PlanManager.getActivePlan(this.sessionState.id);
+          if (!existingPlan) {
+            PlanManager.createOrReplacePlan(this.sessionState.id, {
+              title: extracted.title || 'Architectural Implementation Plan',
+              overview: extracted.overview,
+              steps: extracted.steps,
+              acceptanceCriteria: extracted.acceptanceCriteria,
+            });
+          } else {
+            PlanManager.mergePlan(this.sessionState.id, {
+              title: extracted.title || existingPlan.title,
+              overview: extracted.overview || existingPlan.overview,
+              steps: extracted.steps,
+              acceptanceCriteria: extracted.acceptanceCriteria,
+            });
+          }
+        }
       }
 
       this.emit('done', finalAssistantResponse);

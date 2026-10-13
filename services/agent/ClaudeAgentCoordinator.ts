@@ -1,6 +1,7 @@
 import { MailboxQueue } from './MailboxQueue.js';
 import { getClaudeAgentRole, type ClaudeAgentRoleType, type ClaudeAgentRoleDefinition } from './ClaudeAgentRoles.js';
 import { CounterexampleAgent } from './CounterexampleAgent.js';
+import { PlanManager } from '../../state/PlanManager.js';
 import type { ToolExecutionContext } from '../../types/index.js';
 
 export interface AgentStepResult {
@@ -110,6 +111,33 @@ export class ClaudeAgentCoordinator {
       },
       timestamp: Date.now()
     };
+
+    if (context.sessionId) {
+      const planObjSteps = planSteps.map((s, idx) => ({
+        id: String(idx + 1),
+        title: s.replace(/^\d+\.\s*/, ''),
+        description: s,
+        targetFiles,
+        status: 'pending' as const,
+      }));
+
+      const existingPlan = PlanManager.getActivePlan(context.sessionId);
+      if (!existingPlan) {
+        PlanManager.createOrReplacePlan(context.sessionId, {
+          title: goal,
+          overview: `Execution blueprint for ${goal}`,
+          steps: planObjSteps,
+          acceptanceCriteria: ['All existing test suites pass', 'Target behavior satisfied', 'Zero lint errors'],
+        });
+      } else {
+        PlanManager.mergePlan(context.sessionId, {
+          title: goal,
+          overview: `Updated execution blueprint for ${goal}`,
+          steps: planObjSteps,
+          additionsOrChangesText: goal,
+        });
+      }
+    }
 
     this.mailbox.enqueue(workerId, 'coordinator', `Plan completed with ${planSteps.length} atomic steps`);
     return result;

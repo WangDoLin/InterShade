@@ -245,6 +245,7 @@ export class SessionStore {
     const db = getDatabase();
     try {
       db.prepare(`DELETE FROM memories WHERE session_id = ?`).run(sessionId);
+      db.prepare(`DELETE FROM session_plans WHERE session_id = ?`).run(sessionId);
       const res = db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
       return (res && typeof res.changes === 'number') ? res.changes > 0 : true;
     } catch {
@@ -252,6 +253,7 @@ export class SessionStore {
         db.prepare(`DELETE FROM messages WHERE session_id = ?`).run(sessionId);
         db.prepare(`DELETE FROM file_snapshots WHERE session_id = ?`).run(sessionId);
         db.prepare(`DELETE FROM tasks WHERE session_id = ?`).run(sessionId);
+        db.prepare(`DELETE FROM session_plans WHERE session_id = ?`).run(sessionId);
         const res = db.prepare(`DELETE FROM sessions WHERE id = ?`).run(sessionId);
         return (res && typeof res.changes === 'number') ? res.changes > 0 : true;
       } catch {

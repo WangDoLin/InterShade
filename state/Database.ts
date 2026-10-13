@@ -133,9 +133,22 @@ export function getDatabase(): any {
       created_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS session_plans (
+      session_id TEXT PRIMARY KEY,
+      current_version INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      overview TEXT,
+      plan_json TEXT NOT NULL,
+      revisions_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
     CREATE INDEX IF NOT EXISTS idx_snapshots_session ON file_snapshots(session_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_session_plans ON session_plans(session_id);
     CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_trajectories_session ON trajectories(session_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_trajectories_task ON trajectories(task_id);

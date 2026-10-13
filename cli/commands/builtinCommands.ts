@@ -17,6 +17,7 @@ import { GatewayFormatter } from '../../providers/catalog/GatewayFormatter.js';
 import { ModelDiscovery } from '../../providers/catalog/ModelDiscovery.js';
 import { ConnectionRegistry } from '../../providers/core/ConnectionRegistry.js';
 import { ProviderHealthChecker } from '../../providers/reliability/ProviderHealthChecker.js';
+import { PlanManager } from '../../state/PlanManager.js';
 import { config } from '../../config/index.js';
 
 
@@ -495,11 +496,27 @@ export const modeCommand: LocalCommand = {
 
 export const planCommand: LocalCommand = {
   name: 'plan',
-  description: 'Toggle Plan Mode (Read-Only architectural safe mode) or set target scope (/plan [path])',
+  description: 'Toggle Plan Mode (Read-Only architectural safe mode) or inspect/manage active plan (/plan [path|view|reset])',
   type: 'local',
   aliases: [],
   execute: (ctx) => {
     const st = ctx.sessionState as Record<string, unknown>;
+    const arg0 = (ctx.args[0] || '').toLowerCase().trim();
+    const sessionId = (st.id as string) || '';
+
+    if (arg0 === 'view' || arg0 === 'show') {
+      const plan = PlanManager.getActivePlan(sessionId);
+      if (!plan) {
+        return '[PLAN NOTICE]: No active plan has been established for this session yet. Type your planning request or /plan to start.';
+      }
+      return PlanManager.formatPlanMarkdown(plan, { showChangelog: true });
+    }
+
+    if (arg0 === 'reset' || arg0 === 'clear') {
+      PlanManager.clearPlan(sessionId);
+      return '[PLAN RESET]: Active plan cleared from session memory. Ready to establish a new plan.';
+    }
+
     const targetPath = ctx.args.join(' ').trim();
     const currentMode = st.permissionMode;
     const nextMode = currentMode === 'plan' && !targetPath ? 'default' : 'plan';
@@ -507,6 +524,10 @@ export const planCommand: LocalCommand = {
     let msg = nextMode === 'plan' ? '[PLAN MODE ON]: Write tools and shell execution are locked to read-only.' : '[PLAN MODE OFF]: Normal execution mode restored.';
     if (targetPath) {
       msg += `\nTarget Scope: ${targetPath}\nReady for planning. Describe what features or fixes you want to investigate.`;
+    }
+    const activePlan = PlanManager.getActivePlan(sessionId);
+    if (activePlan && nextMode === 'plan') {
+      msg += `\n\nActive Plan (v${activePlan.currentVersion}): "${activePlan.title}" with ${activePlan.steps.length} steps. Any updates will merge with this plan.`;
     }
     return msg;
   }
