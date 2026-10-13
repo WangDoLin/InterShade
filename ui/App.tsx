@@ -8,11 +8,10 @@ import { MessageView } from './components/MessageView.js';
 import { ToolProgressBlock } from './components/ToolProgressBlock.js';
 import { InteractivePrompt } from './components/InteractivePrompt.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
-import { PromptHistoryBar } from './components/PromptHistoryBar.js';
 import { HistoryInspectionView } from './components/HistoryInspectionView.js';
 import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
 import { TerminalMouseManager } from './services/TerminalMouseManager.js';
-import { extractPromptTurns } from './utils/turnExtractor.js';
+import { extractPromptTurns, truncatePromptText } from './utils/turnExtractor.js';
 import type { QueryEngine } from '../orchestrator/QueryEngine.js';
 import type { UnifiedMessage, PermissionRequest } from '../types/index.js';
 
@@ -105,12 +104,22 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     }
   }, [queryEngine, exit, pendingPermission]);
 
-  // Global Ctrl+C key interception via Ink useInput
+  // Global key interception: Ctrl+C (abort/exit) & Alt+1..9 (rewind to turn)
   useInput((input, key) => {
     if (key.ctrl && (input === 'c' || input === 'C')) {
       handleAbort();
+      return;
+    }
+
+    // Alt + 1..9 jumps to prompt turn (Antigravity CLI style)
+    if (key.meta && /^[1-9]$/.test(input)) {
+      const targetTurn = parseInt(input, 10);
+      if (targetTurn <= promptTurns.length) {
+        setViewingTurnIndex(targetTurn);
+      }
     }
   });
+
 
   // Global process-level SIGINT listener (handles OS signals, terminal break events)
   useEffect(() => {
@@ -510,6 +519,30 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
     }
 
+    if (prompt === '/history') {
+      const historySummary =
+        promptTurns.length === 0
+          ? 'No previous prompt turns in this session yet.'
+          : [
+              'Session Prompt History:',
+              ...promptTurns.map(
+                (t) =>
+                  `  Turn #${t.turnIndex}: "${truncatePromptText(t.promptText, 50)}" (Alt+${t.turnIndex} or /turn ${t.turnIndex})`
+              ),
+              '',
+              'Use /turn <number> or Alt+1..9 to inspect any past turn, /return to return to bottom.',
+            ].join('\n');
+      const historyMsg: UnifiedMessage = {
+        id: randomUUID(),
+        role: 'assistant',
+        content: historySummary,
+        timestamp: Date.now(),
+      };
+      queryEngine.appendSyntheticMessage(historyMsg);
+      setMessages([...queryEngine.getMessages()]);
+      return;
+    }
+
     if (prompt === '/return' || prompt === '/bottom') {
       setViewingTurnIndex(null);
       return;
@@ -539,6 +572,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           '',
           '[System & Session Controls]',
           '  /plan        - Toggle Plan Mode (Read-Only)',
+          '  /history     - View prompt history turns and shortcuts',
           '  /turn <id>   - Inspect historical prompt turn in rewind viewport',
           '  /return      - Return to latest bottom prompt input',
           '  /lang <id>   - Switch UI language (en, vi, ja, zh, es, fr, de, ko, ru)',
@@ -558,6 +592,15 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       queryEngine.appendSyntheticMessage(helpMsg);
       setMessages([...queryEngine.getMessages()]);
       return;
+    }
+
+    if (process.stdout.isTTY) {
+      try {
+        const shortPrompt = truncatePromptText(prompt, 35);
+        process.stdout.write(`\x1b]0;InterShader [Turn #${promptTurns.length + 1}]: ${shortPrompt}\x07`);
+      } catch {
+        // Ignore if stdout is closed
+      }
     }
 
     setIsBusy(true);
@@ -584,18 +627,37 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
   type StaticItem =
     | { type: 'header'; id: string }
-    | { type: 'message'; id: string; message: UnifiedMessage };
+    | {
+        type: 'message';
+        id: string;
+        message: UnifiedMessage;
+        previousPrompt?: string;
+        turnIndex?: number;
+      };
 
   // All conversation messages in visibleMessages are completed turns.
   // Rendering them directly via <Static> guarantees they are printed once in full to stdout,
   // scroll naturally without truncation, and never overflow the dynamic terminal area.
   const staticItems: StaticItem[] = useMemo(() => {
     const items: StaticItem[] = [{ type: 'header', id: 'session-header' }];
+    let userTurnCounter = 0;
     for (const msg of visibleMessages) {
-      items.push({ type: 'message', id: msg.id, message: msg });
+      if (msg.role === 'user') {
+        userTurnCounter++;
+        const prevTurn = promptTurns.find((t) => t.turnIndex === userTurnCounter - 1);
+        items.push({
+          type: 'message',
+          id: msg.id,
+          message: msg,
+          previousPrompt: prevTurn?.promptText,
+          turnIndex: userTurnCounter,
+        });
+      } else {
+        items.push({ type: 'message', id: msg.id, message: msg });
+      }
     }
     return items;
-  }, [visibleMessages]);
+  }, [visibleMessages, promptTurns]);
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -614,17 +676,16 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
               />
             );
           }
-          return <MessageView key={item.id} message={item.message} />;
+          return (
+            <MessageView
+              key={item.id}
+              message={item.message}
+              previousPrompt={item.previousPrompt}
+              turnIndex={item.turnIndex}
+            />
+          );
         }}
       </Static>
-
-      {/* Top Sticky Prompt History Bar */}
-      <PromptHistoryBar
-        turns={promptTurns}
-        selectedTurnIndex={viewingTurnIndex}
-        onSelectTurn={handleSelectTurn}
-        onReturnToBottom={handleReturnToBottom}
-      />
 
       {selectedTurn ? (
         <>

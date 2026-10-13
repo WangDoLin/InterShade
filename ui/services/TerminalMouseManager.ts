@@ -73,30 +73,16 @@ export class TerminalMouseManager extends EventEmitter {
   }
 
   /**
-   * Enables ANSI SGR mouse reporting mode in the terminal.
+   * Enables mouse manager in safe mode.
+   * Preserves native terminal mouse scrolling so the terminal scrollback buffer
+   * scrolls naturally without hijacking mouse wheel events into stdin.
    */
   public enable(): void {
-    if (this.isEnabled) return;
-    if (!process.stdout.isTTY) return;
-
     this.isEnabled = true;
-    try {
-      // 1000h: Report button click; 1006h: SGR extended coordinates format
-      process.stdout.write('\x1b[?1000h\x1b[?1006h');
-    } catch {
-      // Ignore if stdout is closed
-    }
-
-    this.stdinListener = (chunk: Buffer | string) => {
-      const str = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-      this.handleRawInput(str);
-    };
-
-    process.stdin.on('data', this.stdinListener);
   }
 
   /**
-   * Disables ANSI SGR mouse reporting and restores standard terminal behavior.
+   * Disables mouse reporting and restores standard terminal behavior.
    */
   public disable(): void {
     if (!this.isEnabled) return;
@@ -117,6 +103,7 @@ export class TerminalMouseManager extends EventEmitter {
   }
 
   /**
+
    * Registers a clickable hit-box zone on the terminal screen.
    */
   public registerZone(zone: HitBoxZone): void {

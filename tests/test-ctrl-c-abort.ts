@@ -2,10 +2,12 @@ import assert from 'assert';
 import { QueryEngine } from '../orchestrator/QueryEngine.js';
 import type { SessionConfig } from '../types/index.js';
 
+import { randomUUID } from 'crypto';
+
 console.log('=== TEST SUITE: Ctrl+C Agent Abort & Session Preservation ===\n');
 
 const testConfig: SessionConfig = {
-  sessionId: 'test-ctrl-c-session',
+  sessionId: 'test-ctrl-c-session-' + randomUUID(),
   provider: 'anthropic',
   model: 'claude-3-7-sonnet-20250219',
   cwd: process.cwd(),

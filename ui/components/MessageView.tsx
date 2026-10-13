@@ -3,12 +3,19 @@ import { Box, Text } from 'ink';
 import type { UnifiedMessage } from '../../types/index.js';
 import { DiffViewer } from './DiffViewer.js';
 import { THEME } from '../theme.js';
+import { truncatePromptText } from '../utils/turnExtractor.js';
 
 export interface MessageViewProps {
   message: UnifiedMessage;
+  previousPrompt?: string;
+  turnIndex?: number;
 }
 
-export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
+export const MessageView: React.FC<MessageViewProps> = ({
+  message,
+  previousPrompt,
+  turnIndex,
+}) => {
   if (message.role === 'system') {
     return null;
   }
@@ -16,8 +23,15 @@ export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
   if (message.role === 'user') {
     return (
       <Box flexDirection="column" marginY={0} paddingBottom={1}>
+        {previousPrompt && (
+          <Box flexDirection="row" gap={1} marginBottom={0}>
+            <Text color={THEME.colors.muted}>
+              ⟵ [Previous Turn #{turnIndex ? turnIndex - 1 : ''}: &quot;{truncatePromptText(previousPrompt, 45)}&quot;]
+            </Text>
+          </Box>
+        )}
         <Text bold color={THEME.colors.accent}>
-          {THEME.brand.promptSymbol} You:
+          {THEME.brand.promptSymbol} You{turnIndex ? ` (Turn #${turnIndex})` : ''}:
         </Text>
         <Box paddingLeft={2}>
           <Text color={THEME.colors.text}>{message.content}</Text>
@@ -25,6 +39,7 @@ export const MessageView: React.FC<MessageViewProps> = ({ message }) => {
       </Box>
     );
   }
+
 
   if (message.role === 'assistant') {
     const isError =
