@@ -710,13 +710,24 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
         const { provider, model } = ProviderFactory.create(this.sessionConfig.provider, effectiveModel);
 
+        // Dynamic thinking budget:
+        // - In fast speed mode, thinking is 0 (immediate generation).
+        // - In multi-step intermediate tool turns (turnCount > 1), clamp to 1024 tokens to eliminate idle thinking delay between tool steps.
+        // - On initial turn (turnCount === 1), retain full thinking budget for deep architectural reasoning.
+        let effectiveThinkingBudget = this.sessionConfig.thinkingBudget;
+        if (this.sessionConfig.speedMode === 'fast') {
+          effectiveThinkingBudget = 0;
+        } else if (turnCount > 1 && effectiveThinkingBudget && effectiveThinkingBudget > 1024) {
+          effectiveThinkingBudget = 1024;
+        }
+
         const stream = provider.streamChat({
           model,
           systemPrompt: this.messages[0].content,
           messages: this.messages.slice(1),
           tools: this.toolRegistry.getActiveTools(),
           temperature: this.sessionConfig.temperature,
-          thinkingBudget: this.sessionConfig.thinkingBudget,
+          thinkingBudget: effectiveThinkingBudget,
           maxTokens: this.sessionConfig.maxTokens || 16384,
           signal: this.abortController.signal,
         });
