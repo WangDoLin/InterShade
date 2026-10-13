@@ -45,6 +45,15 @@ function isBinaryFile(filePath: string): { isBinary: boolean; type?: string } {
   return { isBinary: false };
 }
 
+interface CachedFileContent {
+  mtimeMs: number;
+  size: number;
+  lines: string[];
+}
+
+const MAX_CACHE_ENTRIES = 100;
+const fileCache = new Map<string, CachedFileContent>();
+
 export class FileReadTool extends BaseTool<{ filePath: string; offset?: number; limit?: number }, string> {
   readonly name = 'file_read';
   readonly description = 'Read the contents of a file with pagination support and binary file detection.';
@@ -74,10 +83,28 @@ export class FileReadTool extends BaseTool<{ filePath: string; offset?: number; 
       return `[BINARY FILE]: ${args.filePath} (${binaryCheck.type}, ${sizeKb} KB) cannot be displayed as text.`;
     }
 
-    const content = fs.readFileSync(resolvedPath, 'utf-8');
-    const lines = content.split(/\r?\n/);
-    const totalLines = lines.length;
+    // Fast-path in-memory cached lines if mtime and size match
+    let lines: string[];
+    const cached = fileCache.get(resolvedPath);
+    if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+      lines = cached.lines;
+    } else {
+      const content = fs.readFileSync(resolvedPath, 'utf-8');
+      lines = content.split(/\r?\n/);
 
+      if (fileCache.size >= MAX_CACHE_ENTRIES) {
+        const oldestKey = fileCache.keys().next().value;
+        if (oldestKey) fileCache.delete(oldestKey);
+      }
+
+      fileCache.set(resolvedPath, {
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        lines,
+      });
+    }
+
+    const totalLines = lines.length;
     const offset = Math.max(1, args.offset || 1);
     const limit = Math.min(2000, args.limit || 2000);
 
@@ -91,7 +118,7 @@ export class FileReadTool extends BaseTool<{ filePath: string; offset?: number; 
       return `${lineNum} | ${line}`;
     });
 
-    let header = `${args.filePath} (${offset}-${endIndex} of ${totalLines} lines)\n`;
+    const header = `${args.filePath} (${offset}-${endIndex} of ${totalLines} lines)\n`;
     return header + numberedLines.join('\n');
   }
 }
