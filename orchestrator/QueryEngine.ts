@@ -818,19 +818,24 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
         // If no tool calls -> Check verification gate & Proof Mode before declaring complete
         if (pendingToolCalls.length === 0) {
-          const typecheck = VerificationGate.verifyTypeScript(this.sessionConfig.cwd);
-          this.evidenceCollector.recordTypecheckResult(typecheck.passed ? 0 : 1);
-          if (!typecheck.passed && typecheck.errorDetails) {
-            this.emit('verification', `Verifying TypeScript build and resolving compiler diagnostics...`);
-            const diagNotice = `The following TypeScript compiler errors were detected in the workspace. Please resolve them:\n${typecheck.errorDetails}`;
-            const autoFeedbackMsg: UnifiedMessage = {
-              id: randomUUID(),
-              role: 'user',
-              content: diagNotice,
-              timestamp: Date.now(),
-            };
-            this.messages.push(autoFeedbackMsg);
-            continue; // Self-healing loop
+          const modifiedFiles = this.evidenceCollector.getModifiedFiles();
+          const shouldVerifyTypecheck = modifiedFiles.length > 0 || this.sessionConfig.proofMode;
+
+          if (shouldVerifyTypecheck) {
+            const typecheck = VerificationGate.verifyTypeScript(this.sessionConfig.cwd);
+            this.evidenceCollector.recordTypecheckResult(typecheck.passed ? 0 : 1);
+            if (!typecheck.passed && typecheck.errorDetails) {
+              this.emit('verification', `Verifying TypeScript build and resolving compiler diagnostics...`);
+              const diagNotice = `The following TypeScript compiler errors were detected in the workspace. Please resolve them:\n${typecheck.errorDetails}`;
+              const autoFeedbackMsg: UnifiedMessage = {
+                id: randomUUID(),
+                role: 'user',
+                content: diagNotice,
+                timestamp: Date.now(),
+              };
+              this.messages.push(autoFeedbackMsg);
+              continue; // Self-healing loop
+            }
           }
 
           if (this.sessionConfig.proofMode) {
