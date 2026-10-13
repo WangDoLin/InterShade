@@ -1,6 +1,6 @@
 import { ModelRegistry, type ModelProfile } from './ModelRegistry.js';
 
-export type TaskCategory = 'REASONING' | 'CODING' | 'REVIEW' | 'FAST';
+export type TaskCategory = 'REASONING' | 'CODING' | 'REVIEW' | 'FAST' | 'RESEARCH';
 
 export interface ModelRouteDecision {
   readonly category: TaskCategory;
@@ -101,7 +101,39 @@ export class ModelRouter {
       };
     }
 
-    // 3. Classification: FAST / CHEAP (Explanations, queries, small lookups)
+    // 3. Classification: RESEARCH / MULTI-SOURCE SEARCH & DOCUMENTATION
+    const isResearch =
+      promptLower.includes('search') ||
+      promptLower.includes('research') ||
+      promptLower.includes('find out') ||
+      promptLower.includes('documentation') ||
+      promptLower.includes('docs for') ||
+      promptLower.includes('tra cứu') ||
+      promptLower.includes('tìm hiểu');
+
+    if (isResearch) {
+      const best = ModelRegistry.selectOptimalModel({
+        primarySkill: 'reasoning',
+      });
+      const recommendedModel = hasGemini ? 'gemini-2.5-flash' : hasAnthropic ? 'claude-3-7-sonnet' : hasOpenAI ? 'gpt-4o' : best.modelId;
+      const recommendedProvider = hasGemini ? 'gemini' : hasAnthropic ? 'anthropic' : hasOpenAI ? 'openai' : 'deepseek';
+
+      return {
+        category: 'RESEARCH',
+        recommendedModel,
+        recommendedProvider,
+        thinkingBudget: 4096,
+        rationale: 'Multi-source research, web synthesis, and technical documentation gathering.',
+        fallbackChain: [
+          { model: 'gemini-2.5-flash', provider: 'gemini' },
+          { model: 'gpt-4o', provider: 'openai' },
+          { model: 'deepseek-chat', provider: 'deepseek' },
+        ],
+        modelProfile: best,
+      };
+    }
+
+    // 4. Classification: FAST / CHEAP (Explanations, queries, small lookups)
     const hasCodingAction =
       promptLower.includes('implement') ||
       promptLower.includes('code') ||
