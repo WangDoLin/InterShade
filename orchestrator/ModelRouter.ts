@@ -16,6 +16,8 @@ export interface RouteRequest {
   prompt: string;
   fileCount?: number;
   isAudit?: boolean;
+  speedMode?: 'normal' | 'fast' | 'turbo';
+  thinkingTier?: 'off' | 'low' | 'med' | 'high';
   preferredProvider?: 'anthropic' | 'openai' | 'gemini' | 'deepseek';
 }
 
@@ -34,6 +36,30 @@ export class ModelRouter {
     const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
     const hasDeepSeek = Boolean(process.env.DEEPSEEK_API_KEY);
     const hasGemini = Boolean(process.env.GEMINI_API_KEY);
+
+    // 0. Explicit Speed Override: If fast mode or zero thinking is requested, route directly to high-speed model
+    if (request.speedMode === 'fast' || request.speedMode === 'turbo' || request.thinkingTier === 'off') {
+      const best = ModelRegistry.selectOptimalModel({
+        primarySkill: 'speed',
+        costPreference: 'economy',
+      });
+      const recommendedModel = hasGemini ? 'gemini-3.8-flash' : hasDeepSeek ? 'deepseek-chat' : best.modelId;
+      const recommendedProvider = hasGemini ? 'gemini' : hasDeepSeek ? 'deepseek' : (best.provider === 'google' ? 'gemini' : best.provider);
+
+      return {
+        category: 'FAST',
+        recommendedModel,
+        recommendedProvider,
+        thinkingBudget: 0,
+        rationale: 'Fast speed mode requested: Routed to low-latency model with zero thinking delay.',
+        fallbackChain: [
+          { model: 'gemini-3.8-flash', provider: 'gemini' },
+          { model: 'deepseek-chat', provider: 'deepseek' },
+          { model: 'gpt-4o', provider: 'openai' },
+        ],
+        modelProfile: best,
+      };
+    }
 
     // 1. Classification: REVIEW / SECURITY AUDIT
     if (
