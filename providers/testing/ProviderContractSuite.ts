@@ -246,7 +246,7 @@ export class ProviderContractSuite {
       assert.strictEqual(ollamaRes.provider.name, 'ollama');
 
       const geminiRes = ProviderFactory.create('gemini');
-      assert.strictEqual(geminiRes.model, 'gemini-2.0-flash');
+      assert.strictEqual(geminiRes.model, 'gemini-2.5-flash');
       assert.strictEqual(geminiRes.provider.name, 'google');
 
       passed++;
