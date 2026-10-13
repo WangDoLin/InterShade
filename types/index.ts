@@ -89,6 +89,7 @@ export interface SessionConfig {
   maxTokens: number;
   temperature?: number;
   thinkingBudget?: number;
+  speedMode?: 'normal' | 'fast' | 'turbo';
   systemPrompt?: string;
   permissionMode: PermissionMode;
   enableDualLoop?: boolean;
@@ -108,6 +109,9 @@ export interface SessionState {
   totalInputTokens: number;
   totalOutputTokens: number;
   totalCostUsd: number;
+  speedMode?: 'normal' | 'fast' | 'turbo';
+  thinkingBudget?: number;
+  totalCachedTokens?: number;
 }
 
 export interface PromptTurnEntry {
