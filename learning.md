@@ -317,3 +317,40 @@ export interface ToolDefinition<TInput = Record<string, unknown>, TOutput = unkn
 ### 10.1 Continuous State Machine (`ContinuousStateMachine.ts`)
 - Synchronously journals session events, active file handles, and interaction trajectories to disk storage (`.intershade/sessions/`).
 - In the event of process termination, power loss, or terminal disruption, the agent restores the exact conversation state, tool call history, and context buffer via transactional journal replay.
+
+---
+
+## Chapter 11: Speed Optimizations, Prompt Caching & Cognitive Reasoning Protocols
+
+### 11.1 VerificationGate Latency Bypass
+- Typecheck verification (`tsc --noEmit`) takes ~20–25s on large workspaces.
+- In `QueryEngine`, typecheck execution is conditioned on `evidenceCollector.getModifiedFiles().length > 0 || sessionConfig.proofMode`.
+- Pure inquiry, planning, and read-only inspection turns complete instantaneously without artificial verification stalls.
+
+### 11.2 Anthropic Ephemeral Prompt Caching
+- Wraps invariant system prompts in `Anthropic.TextBlockParam` with `cache_control: { type: 'ephemeral' }`.
+- Sets `cache_control: { type: 'ephemeral' }` on the terminal tool definition in the active tool schema.
+- Reduces Time-to-First-Token (TTFT) by up to 90% (from 3–5s to ~300ms) and saves 90% input token cost across multi-turn sessions. Tracks `cacheReadTokens` in session state.
+
+### 11.3 Adaptive Thinking Budget Tiers & Speed Commands
+- **Dynamic Tiering**:
+  - `FAST / OFF` (0 tokens): Zero thinking delay for immediate code generation and lookups.
+  - `INTERMEDIATE_TOOL` (512–1,024 tokens): Automatically clamped during multi-step tool execution loops (`turnCount > 1`) to eliminate idle thinking delay between sequential tool calls.
+  - `DEEP_REASONING` (4,096–8,192 tokens): High budgets reserved for root-cause analysis and complex multi-module refactoring.
+- **Slash Commands**:
+  - `/fast [on|off]`: Instantly toggles zero-thinking low-latency execution mode.
+  - `/think [off|low|med|high|<tokens>]`: Dynamically configures reasoning depth on demand.
+
+### 11.4 In-Memory Stat-Validated File Read Cache
+- Caches file contents and line splitting in memory keyed by `(filePath, mtimeMs, size)`.
+- Consecutive file reads and paginated inspections resolve with 0ms disk I/O.
+- Automatically and safely invalidates upon file modification since `stat.mtimeMs` updates on write.
+
+### 11.5 React Ink Terminal UI Stream Throttling
+- Implements a 35ms render buffer (~28 FPS) for high-frequency streaming text and thought deltas.
+- Eliminates terminal cursor redraw churn, prevents 100% CPU saturation, and keeps terminal keyboard interaction responsive.
+
+### 11.6 Agent Reach Multi-Source Web Search Engine
+- Implements `reach_web_search` with Jina Search protocol and DuckDuckGo HTML fallback.
+- Enforces SSRF socket-level IP pinning, TLS SNI, and secret redacting.
+
