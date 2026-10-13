@@ -564,6 +564,44 @@ export const turnsCommand: LocalCommand = {
   }
 };
 
+export const fastCommand: LocalCommand = {
+  name: 'fast',
+  description: 'Toggle Fast Mode for ultra-low latency streaming and instant code execution (/fast [on|off])',
+  type: 'local',
+  aliases: ['speed', 'quick'],
+  execute: (ctx) => {
+    const st = ctx.sessionState as Record<string, unknown>;
+    const arg = ctx.args[0]?.toLowerCase();
+
+    if (!arg) {
+      const next = st.speedMode === 'fast' ? 'normal' : 'fast';
+      st.speedMode = next;
+      if (next === 'fast') {
+        st.thinkingBudget = 0;
+        return '[FAST MODE ON]: Instant generation enabled. Thinking delay set to 0 and verification gate bypasses clean turns.';
+      } else {
+        delete st.speedMode;
+        return '[FAST MODE OFF]: Standard execution mode restored with full reasoning depth.';
+      }
+    }
+
+    if (arg === 'on' || arg === '1' || arg === 'true') {
+      st.speedMode = 'fast';
+      st.thinkingBudget = 0;
+      return '[FAST MODE ON]: Instant generation enabled. Thinking delay set to 0 and verification gate bypasses clean turns.';
+    }
+
+    if (arg === 'off' || arg === '0' || arg === 'false') {
+      st.speedMode = 'normal';
+      return '[FAST MODE OFF]: Standard execution mode restored with full reasoning depth.';
+    }
+
+    return 'Usage: /fast or /fast on or /fast off';
+  }
+};
+
+
+
 export const compactCommand: PromptCommand = {
   name: 'compact',
   description: 'Actively trigger context compaction and summarize conversation history',
