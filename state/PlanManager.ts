@@ -478,7 +478,7 @@ export class PlanManager {
         line.match(/^(?:###\s*)?(?:Step|Bước|Task|T)?\s*(\d+)[:.]\s*(?:\[(?:NEW|UPDATED|UNCHANGED)\]\s*)?\*?\*?([^*\n]+)\*?\*?$/i) ||
         line.match(/^(\d+)\.\s+(?:\[(?:NEW|UPDATED|UNCHANGED)\]\s+)?\*?\*?([^*\n]+)\*?\*?$/i);
 
-      if (stepMatch && currentSection !== 'criteria') {
+      if (stepMatch) {
         if (currentStep && currentStep.title) {
           steps.push(currentStep as PlanStep);
         }
