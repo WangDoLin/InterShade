@@ -138,7 +138,18 @@ async function runTests() {
     assert(read3.includes('Line 1: Updated'), 'Cache automatically invalidates and returns fresh content on mtime change');
   } finally {
     if (fs.existsSync(testFilePath)) {
-      fs.unlinkSync(testFilePath);
+      try {
+        fs.unlinkSync(testFilePath);
+      } catch {
+        await new Promise((r) => setTimeout(r, 100));
+        try {
+          if (fs.existsSync(testFilePath)) {
+            fs.unlinkSync(testFilePath);
+          }
+        } catch {
+          // Ignore Windows file handle delay in test cleanup
+        }
+      }
     }
     clearFileReadCache();
   }

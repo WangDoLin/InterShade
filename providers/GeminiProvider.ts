@@ -224,8 +224,13 @@ export class GeminiProvider extends BaseProvider {
       }
     }
 
+    let isMaxTokens = false;
     try {
       const response = await result.response;
+      const candidateFinish = response?.candidates?.[0]?.finishReason;
+      if (candidateFinish === 'MAX_TOKENS') {
+        isMaxTokens = true;
+      }
       if (response?.usageMetadata) {
         yield {
           type: 'usage',
@@ -237,7 +242,8 @@ export class GeminiProvider extends BaseProvider {
       // Fallback in QueryEngine handles token estimation if usage metadata fails
     }
 
-    yield { type: 'finish', reason: hasFunctionCall ? 'tool_use' : 'end_turn' };
+    const finishReason = isMaxTokens ? 'max_tokens' : hasFunctionCall ? 'tool_use' : 'end_turn';
+    yield { type: 'finish', reason: finishReason };
   }
 
   static normalizeModelName(rawModel?: string): string {

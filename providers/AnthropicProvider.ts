@@ -153,9 +153,15 @@ export class AnthropicProvider extends BaseProvider {
       };
     }
 
+    const reason =
+      finalMessage.stop_reason === 'tool_use'
+        ? 'tool_use'
+        : finalMessage.stop_reason === 'max_tokens'
+        ? 'max_tokens'
+        : 'end_turn';
     yield {
       type: 'finish',
-      reason: finalMessage.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn',
+      reason,
     };
   }
 }

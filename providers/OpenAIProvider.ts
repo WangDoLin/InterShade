@@ -76,8 +76,13 @@ export class OpenAIProvider extends BaseProvider {
 
     const pendingToolCalls = new Map<number, { id: string; name: string; argsString: string }>();
 
+    let finishReasonFromChunk: string | null = null;
+
     for await (const chunk of stream) {
       const choice = chunk.choices[0];
+      if (choice?.finish_reason) {
+        finishReasonFromChunk = choice.finish_reason;
+      }
       if (choice?.delta) {
         const delta = choice.delta;
 
@@ -145,6 +150,12 @@ export class OpenAIProvider extends BaseProvider {
       };
     }
 
-    yield { type: 'finish', reason: pendingToolCalls.size > 0 ? 'tool_use' : 'end_turn' };
+    const finalReason =
+      finishReasonFromChunk === 'length'
+        ? 'max_tokens'
+        : pendingToolCalls.size > 0
+        ? 'tool_use'
+        : 'end_turn';
+    yield { type: 'finish', reason: finalReason };
   }
 }

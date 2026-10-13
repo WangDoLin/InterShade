@@ -25,6 +25,9 @@ import { ParallelToolDispatcher } from '../engine/ParallelToolDispatcher.js';
 import { VerificationEvidenceCollector } from '../engine/VerificationEvidenceCollector.js';
 import { ProofEngine } from '../engine/verification/ProofEngine.js';
 import { PlanManager } from '../state/PlanManager.js';
+import { ModelRouter } from './ModelRouter.js';
+import { AutonomousContinuationGuard } from '../engine/guards/AutonomousContinuationGuard.js';
+import type { BaseProvider } from '../providers/BaseProvider.js';
 import { config } from '../config/index.js';
 
 function calculateModelCost(inputTokens: number, outputTokens: number, model: string): number {
@@ -88,6 +91,7 @@ export class QueryEngine extends EventEmitter {
   private abortController: AbortController | null = null;
   private isExplorationPhase = true;
   private currentContextTokens = 0;
+  private continuationGuard = new AutonomousContinuationGuard();
 
   constructor(sessionConfig: SessionConfig) {
     super();
@@ -607,6 +611,197 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     });
   }
 
+  private isTransientError(err: string): boolean {
+    const lower = err.toLowerCase();
+    return (
+      lower.includes('429') ||
+      lower.includes('rate_limit') ||
+      lower.includes('quota') ||
+      lower.includes('500') ||
+      lower.includes('502') ||
+      lower.includes('503') ||
+      lower.includes('529') ||
+      lower.includes('overloaded') ||
+      lower.includes('econnreset') ||
+      lower.includes('etimedout') ||
+      lower.includes('fetch failed') ||
+      lower.includes('socket hang up') ||
+      lower.includes('network timeout') ||
+      lower.includes('terminated')
+    );
+  }
+
+  private recordUsageUpdate(
+    inputTokens: number,
+    outputTokens: number,
+    model: string,
+    cacheReadTokens?: number
+  ): void {
+    this.currentContextTokens = inputTokens;
+    this.sessionState.totalInputTokens += inputTokens;
+    this.sessionState.totalOutputTokens += outputTokens;
+    if (cacheReadTokens) {
+      this.sessionState.totalCachedTokens = (this.sessionState.totalCachedTokens || 0) + cacheReadTokens;
+    }
+    const costDelta = calculateModelCost(inputTokens, outputTokens, model);
+    this.sessionState.totalCostUsd += costDelta;
+    SessionStore.updateUsage(this.sessionState.id, inputTokens, outputTokens, costDelta);
+    this.emit('usage', this.sessionState.totalInputTokens, this.sessionState.totalOutputTokens);
+  }
+
+  private async attemptStreamChat(
+    provider: BaseProvider,
+    model: string,
+    thinkingBudget?: number
+  ): Promise<{
+    assistantContent: string;
+    assistantThought: string;
+    pendingToolCalls: ToolCall[];
+    turnInputTokens: number;
+    turnOutputTokens: number;
+    turnReportedUsage: boolean;
+    turnFinishReason: string;
+    streamError: string | null;
+  }> {
+    let assistantContent = '';
+    let assistantThought = '';
+    let streamError: string | null = null;
+    let turnFinishReason = 'end_turn';
+    const pendingToolCalls: ToolCall[] = [];
+    let turnInputTokens = 0;
+    let turnOutputTokens = 0;
+    let turnReportedUsage = false;
+
+    try {
+      const stream = provider.streamChat({
+        model,
+        systemPrompt: this.messages[0].content,
+        messages: this.messages.slice(1),
+        tools: this.toolRegistry.getActiveTools(),
+        temperature: this.sessionConfig.temperature,
+        thinkingBudget,
+        maxTokens: this.sessionConfig.maxTokens || 16384,
+        signal: this.abortController?.signal,
+      });
+
+      for await (const event of stream) {
+        if (event.type === 'text_delta') {
+          assistantContent += event.delta;
+          this.emit('text', event.delta);
+        } else if (event.type === 'thought_delta') {
+          assistantThought += event.delta;
+          this.emit('thought', event.delta);
+        } else if (event.type === 'tool_call_start') {
+          this.emit('tool_start', event.name, event.id);
+        } else if (event.type === 'tool_call_done') {
+          pendingToolCalls.push(event.toolCall);
+        } else if (event.type === 'finish') {
+          turnFinishReason = event.reason;
+        } else if (event.type === 'usage') {
+          turnReportedUsage = true;
+          turnInputTokens += event.inputTokens;
+          turnOutputTokens += event.outputTokens;
+          this.recordUsageUpdate(event.inputTokens, event.outputTokens, model, event.cacheReadTokens);
+        } else if (event.type === 'error') {
+          streamError = (event as { error?: { message?: string } }).error?.message || 'Provider request failed';
+          break;
+        }
+      }
+    } catch (err: unknown) {
+      streamError = err instanceof Error ? err.message : String(err);
+    }
+
+    return {
+      assistantContent,
+      assistantThought,
+      pendingToolCalls,
+      turnInputTokens,
+      turnOutputTokens,
+      turnReportedUsage,
+      turnFinishReason,
+      streamError,
+    };
+  }
+
+  private trySwitchFallbackProvider(currentError: string): { provider: BaseProvider; model: string } | null {
+    ModelRouter.markProviderFailure(this.sessionConfig.provider);
+    const fallback = ModelRouter.getActiveFallback(this.sessionConfig.provider, [
+      { model: 'gemini-2.5-flash', provider: 'gemini' },
+      { model: 'gpt-4o', provider: 'openai' },
+      { model: 'deepseek-chat', provider: 'deepseek' },
+    ]);
+
+    if (!fallback || fallback.provider === this.sessionConfig.provider) {
+      return null;
+    }
+
+    const conn = ConnectionRegistry.findByProvider(fallback.provider);
+    const key = conn ? ConnectionRegistry.resolveApiKey(conn) : null;
+    if (!key || key.trim().length === 0) {
+      return null;
+    }
+
+    this.emit('verification', `[Provider Failover]: Switched to fallback '${fallback.provider}' (${fallback.model}) due to "${currentError}".`);
+    this.sessionConfig.provider = fallback.provider;
+    this.sessionConfig.model = fallback.model;
+    return ProviderFactory.create(fallback.provider, fallback.model);
+  }
+
+  private async executeStreamWithRetry(
+    provider: BaseProvider,
+    model: string,
+    thinkingBudget?: number
+  ): Promise<{
+    assistantContent: string;
+    assistantThought: string;
+    pendingToolCalls: ToolCall[];
+    turnInputTokens: number;
+    turnOutputTokens: number;
+    turnReportedUsage: boolean;
+    turnFinishReason: string;
+    streamError: string | null;
+  }> {
+    let activeProvider = provider;
+    let activeModel = model;
+    let attempt = 0;
+    const maxRetries = 3;
+
+    while (attempt < maxRetries) {
+      attempt++;
+      const result = await this.attemptStreamChat(activeProvider, activeModel, thinkingBudget);
+      if (!result.streamError || this.abortController?.signal.aborted) {
+        return result;
+      }
+
+      if (this.isTransientError(result.streamError) && attempt < maxRetries) {
+        const backoffMs = Math.min(3000, 1000 * Math.pow(2, attempt - 1));
+        this.emit('verification', `Transient error: "${result.streamError}". Retrying (${attempt}/${maxRetries}) in ${backoffMs}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      const failover = this.trySwitchFallbackProvider(result.streamError);
+      if (failover) {
+        activeProvider = failover.provider;
+        activeModel = failover.model;
+        continue;
+      }
+
+      return result;
+    }
+
+    return {
+      assistantContent: '',
+      assistantThought: '',
+      pendingToolCalls: [],
+      turnInputTokens: 0,
+      turnOutputTokens: 0,
+      turnReportedUsage: false,
+      turnFinishReason: 'end_turn',
+      streamError: 'Max retry attempts exhausted',
+    };
+  }
+
   /**
    * Main Agentic Conversation Loop with Observation Pruning and Verification Gating
    */
@@ -665,6 +860,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       let finalAssistantResponse = '';
       let turnCount = 0;
       let completedNaturally = false;
+      let lastToolTurnHadError = false;
+      this.continuationGuard.resetConsecutive();
       const maxTurns =
         this.sessionConfig.maxTurns !== undefined
           ? this.sessionConfig.maxTurns
@@ -721,55 +918,20 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           effectiveThinkingBudget = 1024;
         }
 
-        const stream = provider.streamChat({
+        const streamResult = await this.executeStreamWithRetry(
+          provider,
           model,
-          systemPrompt: this.messages[0].content,
-          messages: this.messages.slice(1),
-          tools: this.toolRegistry.getActiveTools(),
-          temperature: this.sessionConfig.temperature,
-          thinkingBudget: effectiveThinkingBudget,
-          maxTokens: this.sessionConfig.maxTokens || 16384,
-          signal: this.abortController.signal,
-        });
+          effectiveThinkingBudget
+        );
 
-        let assistantContent = '';
-        let assistantThought = '';
-        let streamError: string | null = null;
-        const pendingToolCalls: ToolCall[] = [];
-        let turnInputTokens = 0;
-        let turnOutputTokens = 0;
-        let turnReportedUsage = false;
-
-        for await (const event of stream) {
-          if (event.type === 'text_delta') {
-            assistantContent += event.delta;
-            this.emit('text', event.delta);
-          } else if (event.type === 'thought_delta') {
-            assistantThought += event.delta;
-            this.emit('thought', event.delta);
-          } else if (event.type === 'tool_call_start') {
-            this.emit('tool_start', event.name, event.id);
-          } else if (event.type === 'tool_call_done') {
-            pendingToolCalls.push(event.toolCall);
-          } else if (event.type === 'usage') {
-            turnReportedUsage = true;
-            turnInputTokens += event.inputTokens;
-            turnOutputTokens += event.outputTokens;
-            this.currentContextTokens = event.inputTokens;
-            this.sessionState.totalInputTokens += event.inputTokens;
-            this.sessionState.totalOutputTokens += event.outputTokens;
-            if (event.cacheReadTokens) {
-              this.sessionState.totalCachedTokens = (this.sessionState.totalCachedTokens || 0) + event.cacheReadTokens;
-            }
-            const costDelta = calculateModelCost(event.inputTokens, event.outputTokens, model);
-            this.sessionState.totalCostUsd += costDelta;
-            SessionStore.updateUsage(this.sessionState.id, event.inputTokens, event.outputTokens, costDelta);
-            this.emit('usage', this.sessionState.totalInputTokens, this.sessionState.totalOutputTokens);
-          } else if (event.type === 'error') {
-            streamError = (event as { error?: { message?: string } }).error?.message || 'Provider request failed';
-            break;
-          }
-        }
+        let assistantContent = streamResult.assistantContent;
+        const assistantThought = streamResult.assistantThought;
+        let streamError = streamResult.streamError;
+        const pendingToolCalls = streamResult.pendingToolCalls;
+        const turnFinishReason = streamResult.turnFinishReason;
+        const turnReportedUsage = streamResult.turnReportedUsage;
+        const turnInputTokens = streamResult.turnInputTokens;
+        const turnOutputTokens = streamResult.turnOutputTokens;
 
         if (!turnReportedUsage || (turnInputTokens === 0 && turnOutputTokens === 0)) {
           const estInput = TokenCounter.estimateMessagesTokens(this.messages);
@@ -830,8 +992,33 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           break;
         }
 
-        // If no tool calls -> Check verification gate & Proof Mode before declaring complete
+        // If no tool calls -> Check continuation guard, verification gate & Proof Mode before declaring complete
         if (pendingToolCalls.length === 0) {
+          const continuationDecision = this.continuationGuard.evaluateTurn({
+            assistantContent,
+            finishReason: turnFinishReason,
+            pendingToolCallsCount: pendingToolCalls.length,
+            lastToolTurnHadError,
+            modifiedFilesCount: this.evidenceCollector.getModifiedFiles().length,
+            isProofModeActive: !!this.sessionConfig.proofMode,
+            recentMessages: this.messages,
+          });
+
+          if (continuationDecision.shouldContinue && continuationDecision.nudgePrompt) {
+            this.emit(
+              'verification',
+              `[Autonomous Continuation]: ${continuationDecision.reason} detected. Resuming agent loop...`
+            );
+            const autoContinuationMsg: UnifiedMessage = {
+              id: randomUUID(),
+              role: 'user',
+              content: continuationDecision.nudgePrompt,
+              timestamp: Date.now(),
+            };
+            this.messages.push(autoContinuationMsg);
+            continue; // Self-healing continuation loop
+          }
+
           const modifiedFiles = this.evidenceCollector.getModifiedFiles();
           const shouldVerifyTypecheck = modifiedFiles.length > 0 || this.sessionConfig.proofMode;
 
@@ -908,6 +1095,11 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           },
           this.permissionEngine
         );
+
+        lastToolTurnHadError = dispatchedResults.some((dr) => dr.isError);
+        if (dispatchedResults.length > 0) {
+          this.continuationGuard.resetConsecutive();
+        }
 
         if (toolContext.permissionMode !== this.sessionConfig.permissionMode) {
           this.setPermissionMode(toolContext.permissionMode);
