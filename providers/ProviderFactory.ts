@@ -9,7 +9,7 @@ export class ProviderFactory {
     // If an explicit model is passed, use it. Otherwise, if providerName is omitted or matches default, use config.defaultModel.
     // If a specific provider is requested without a model, let the connection's defaultModelId take effect.
     let selectedModel = model;
-    if (!selectedModel && (!providerName || providerName.toLowerCase() === config.defaultProvider.toLowerCase())) {
+    if (!selectedModel && !providerName) {
       selectedModel = config.defaultModel;
     }
 
