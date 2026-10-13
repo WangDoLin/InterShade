@@ -27,6 +27,7 @@ import {
   SerenaDiagnosticsTool,
 } from './semantic/SemanticTools.js';
 import {
+  ReachWebSearchTool,
   ReachWebReadTool,
   ReachGithubResearchTool,
   ReachDoctorTool,
@@ -72,6 +73,7 @@ export class ToolRegistry {
     this.register(new SerenaDiagnosticsTool());
 
     // Agent Reach tools
+    this.register(new ReachWebSearchTool());
     this.register(new ReachWebReadTool());
     this.register(new ReachGithubResearchTool());
     this.register(new ReachDoctorTool());
