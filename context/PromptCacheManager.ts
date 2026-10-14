@@ -27,6 +27,7 @@ export class PromptCacheManager {
       activePlan?: ActivePlan | null;
       availableSkills?: Array<{ name: string; description: string; tags?: string[] }>;
       activeSkillWorkflow?: { name: string; instructions: string } | null;
+      durableMemories?: string;
     }
   ): { staticBlock: CacheBlock; dynamicBlock: CacheBlock } {
     // 1. Static Prefix: System rules, guidelines, tool specifications & skill catalog
@@ -57,7 +58,11 @@ export class PromptCacheManager {
       ? `\n\n# Active Engineering Skill: ${dynamicContext.activeSkillWorkflow.name}\n${dynamicContext.activeSkillWorkflow.instructions}`
       : '';
 
-    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}${planSection}${activeSkillSection}`;
+    const memorySection = dynamicContext.durableMemories
+      ? `\n\n${dynamicContext.durableMemories}`
+      : '';
+
+    const dynamicText = `\n# Active Environment Context\nCWD: ${dynamicContext.cwd}\nModel: ${dynamicContext.model}\nDate: ${dynamicContext.sessionDate}${fileLedger}${planSection}${activeSkillSection}${memorySection}`;
 
     const dynamicBlock: CacheBlock = {
       type: 'text',
