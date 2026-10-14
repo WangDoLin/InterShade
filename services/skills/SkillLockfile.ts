@@ -30,7 +30,7 @@ export interface SkillPackage {
   content: string;
   rawFileContent: string;
   skillDir: string;
-  tier: 'builtin' | 'user' | 'workspace';
+  tier: 'builtin' | 'global' | 'user' | 'workspace';
   contentSha256: string;
   treeSha256: string;
   assetFiles: string[];

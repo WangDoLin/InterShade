@@ -14,7 +14,7 @@ export interface SkillSummary {
   name: string;
   description: string;
   version: string;
-  tier: 'builtin' | 'user' | 'workspace';
+  tier: 'builtin' | 'global' | 'user' | 'workspace';
   license: string;
   upstreamUrl?: string;
   tags?: string[];
@@ -24,7 +24,7 @@ export interface SkillSummary {
 export interface SkillActivationResult {
   success: boolean;
   skillName: string;
-  tier: 'builtin' | 'user' | 'workspace';
+  tier: 'builtin' | 'global' | 'user' | 'workspace';
   instructions: string;
   auditReport?: SkillAuditReport;
   error?: string;
@@ -73,13 +73,33 @@ export class SkillRegistry {
     const lines = yamlBlock.split(/\r?\n/);
     let currentKey = '';
     let currentObject: Record<string, any> | null = null;
+    let multiLineKey = '';
+    let multiLineType: '>' | '|' = '>';
+    const multiLineBuffer: string[] = [];
+
+    const flushMultiLine = () => {
+      if (multiLineKey) {
+        frontmatter[multiLineKey] = multiLineType === '>'
+          ? multiLineBuffer.join(' ').trim()
+          : multiLineBuffer.join('\n').trim();
+        multiLineKey = '';
+        multiLineBuffer.length = 0;
+      }
+    };
 
     for (const line of lines) {
       const trimmedLine = line.trim();
       if (!trimmedLine || trimmedLine.startsWith('#')) continue;
 
+      // Check multi-line string continuation (e.g. description: >)
+      if ((line.startsWith('  ') || line.startsWith('\t')) && multiLineKey) {
+        multiLineBuffer.push(trimmedLine);
+        continue;
+      }
+
       // Check sub-property (2 spaces indent)
       if (line.startsWith('  ') && currentObject) {
+        flushMultiLine();
         const colonIdx = trimmedLine.indexOf(':');
         if (colonIdx !== -1) {
           const subKey = trimmedLine.slice(0, colonIdx).trim();
@@ -91,6 +111,7 @@ export class SkillRegistry {
         continue;
       }
 
+      flushMultiLine();
       currentObject = null;
       const colonIdx = line.indexOf(':');
       if (colonIdx === -1) continue;
@@ -98,8 +119,11 @@ export class SkillRegistry {
       const key = line.slice(0, colonIdx).trim();
       let value = line.slice(colonIdx + 1).trim();
 
-      if (value === '') {
-        // Start of object block
+      if (value === '>' || value === '|') {
+        multiLineKey = key;
+        multiLineType = value as '>' | '|';
+        multiLineBuffer.length = 0;
+      } else if (value === '') {
         currentKey = key;
         currentObject = {};
         frontmatter[key] = currentObject;
@@ -117,6 +141,7 @@ export class SkillRegistry {
       }
     }
 
+    flushMultiLine();
     return { frontmatter: frontmatter as Partial<SkillFrontmatter>, body };
   }
 
@@ -125,7 +150,7 @@ export class SkillRegistry {
    */
   private loadSkillFromDir(
     skillDir: string,
-    tier: 'builtin' | 'user' | 'workspace'
+    tier: 'builtin' | 'global' | 'user' | 'workspace'
   ): SkillPackage | null {
     const skillMdPath = path.join(skillDir, 'SKILL.md');
     if (!fs.existsSync(skillMdPath)) {
@@ -146,9 +171,9 @@ export class SkillRegistry {
       const metadata: SkillFrontmatter = {
         name: skillName,
         description: frontmatter.description || 'No description provided.',
-        license: frontmatter.license || 'UNLICENSED',
+        license: frontmatter.license || 'Apache-2.0',
         version: frontmatter.version || '1.0.0',
-        author: frontmatter.author,
+        author: frontmatter.author || 'Engineering Community',
         upstreamUrl: frontmatter.upstreamUrl || '',
         commitSha: frontmatter.commitSha || '',
         compatibility: frontmatter.compatibility,
@@ -189,18 +214,27 @@ export class SkillRegistry {
 
   /**
    * Scan all discovery tiers and populate the internal skill map
+   * Precedence order (higher overrides lower):
+   * builtin < global (IDE) < user (~/.intershader) < workspace (.intershader / .agents)
    */
   discoverAllSkills(): SkillPackage[] {
     this.cachedSkills.clear();
+    const userHome = os.homedir();
 
-    const tiers: { dir: string; tier: 'builtin' | 'user' | 'workspace' }[] = [
+    const tiers: { dir: string; tier: 'builtin' | 'global' | 'user' | 'workspace' }[] = [
       // 1. Built-in tier (lowest precedence)
       { dir: path.join(this.packageRoot, 'skills'), tier: 'builtin' },
-      // 2. User tier
-      { dir: path.join(os.homedir(), '.intershader', 'skills'), tier: 'user' },
-      // 3. Workspace tier (.intershader/skills)
+
+      // 2. Global IDE Customizations tier
+      { dir: path.join(userHome, '.gemini', 'config', 'skills'), tier: 'global' },
+      { dir: path.join(userHome, '.claude', 'skills'), tier: 'global' },
+      { dir: path.join(userHome, '.agents', 'skills'), tier: 'global' },
+
+      // 3. User tier (~/.intershader/skills)
+      { dir: path.join(userHome, '.intershader', 'skills'), tier: 'user' },
+
+      // 4. Workspace tier (.intershader/skills, .agents/skills)
       { dir: path.join(this.workspaceDir, '.intershader', 'skills'), tier: 'workspace' },
-      // 3b. Workspace tier (.agents/skills)
       { dir: path.join(this.workspaceDir, '.agents', 'skills'), tier: 'workspace' },
     ];
 
