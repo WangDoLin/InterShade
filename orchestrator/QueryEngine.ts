@@ -24,8 +24,15 @@ import { HookEngine } from '../services/hooks/HookEngine.js';
 import { ParallelToolDispatcher } from '../engine/ParallelToolDispatcher.js';
 import { VerificationEvidenceCollector } from '../engine/VerificationEvidenceCollector.js';
 import { ProofEngine } from '../engine/verification/ProofEngine.js';
+import path from 'path';
 import { PlanManager } from '../state/PlanManager.js';
 import { ModelRouter } from './ModelRouter.js';
+import { ModelRegistry } from './ModelRegistry.js';
+import { FtsMemoryService } from '../services/memory/FtsMemoryService.js';
+import { ContextProviderResolver } from '../services/context/ContextProviderResolver.js';
+import { DeveloperHabitService } from '../services/memory/DeveloperHabitService.js';
+import { ReproducerGate } from '../engine/reproducer/ReproducerGate.js';
+import { McpClientManager } from '../services/mcp/McpClientManager.js';
 import { AutonomousContinuationGuard } from '../engine/guards/AutonomousContinuationGuard.js';
 import { SkillRegistry } from '../services/skills/SkillRegistry.js';
 import type { BaseProvider } from '../providers/BaseProvider.js';
@@ -113,6 +120,13 @@ export class QueryEngine extends EventEmitter {
     this.evidenceCollector = new VerificationEvidenceCollector();
     this.permissionEngine = new PermissionEngine(sessionConfig.permissionMode);
     this.skillRegistry = new SkillRegistry(sessionConfig.cwd);
+
+    // Initialize external Model Context Protocol (MCP) servers if configured
+    McpClientManager.initializeMcpServers(sessionConfig.cwd, this.toolRegistry).then((loaded) => {
+      if (loaded.length > 0) {
+        this.emit('notice', `[MCP]: Registered ${loaded.length} external tools from active MCP servers.`);
+      }
+    }).catch(() => {});
 
     // Session restoration or creation logic
     const shouldResume = sessionConfig.resumeSession !== false;
@@ -316,7 +330,24 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     return Array.from(set);
   }
 
-  private buildFullSystemContent(): string {
+  public getEffectiveMaxContextTokens(): number {
+    return ModelRegistry.resolveModelContextWindow(this.sessionConfig.model, config.maxContextTokens);
+  }
+
+  public getProjectId(): string {
+    return path.basename(this.sessionConfig.cwd) || 'default-project';
+  }
+
+  public pinMessage(messageId: string, isPinned = true): boolean {
+    const msg = this.messages.find((m) => m.id === messageId);
+    if (msg) {
+      msg.isPinned = isPinned;
+      return true;
+    }
+    return false;
+  }
+
+  private buildFullSystemContent(currentGoal?: string): string {
     const availableSkills = this.skillRegistry.getSkillCatalog().map((s) => ({
       name: s.name,
       description: s.description,
@@ -330,6 +361,14 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         }
       : null;
 
+    const projectId = this.getProjectId();
+    let durableMemories = '';
+    try {
+      durableMemories = FtsMemoryService.formatMemoriesForContext(projectId, currentGoal);
+    } catch {
+      durableMemories = '';
+    }
+
     const { staticBlock, dynamicBlock } = PromptCacheManager.buildPromptCacheBlocks(
       this.getBasePrompt(),
       this.toolRegistry.getActiveTools(),
@@ -341,13 +380,14 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         activePlan: PlanManager.getActivePlan(this.sessionState.id),
         availableSkills,
         activeSkillWorkflow,
+        durableMemories,
       }
     );
     return `${staticBlock.text}\n${dynamicBlock.text}`;
   }
 
-  private refreshSystemPrompt(): void {
-    const fullSystemContent = this.buildFullSystemContent();
+  private refreshSystemPrompt(currentGoal?: string): void {
+    const fullSystemContent = this.buildFullSystemContent(currentGoal);
     if (this.messages.length > 0 && this.messages[0].role === 'system') {
       this.messages[0].content = fullSystemContent;
     }
@@ -969,23 +1009,34 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     this.abortController = new AbortController();
 
     try {
+      // 1. Detect and persist developer habits or styling preferences
+      DeveloperHabitService.detectAndPersistHabit(userPrompt, this.getProjectId(), this.sessionState.id);
+
+      // 2. Resolve inline context shortcuts (@diff, @git, @memories, @file:<path>)
+      const resolved = ContextProviderResolver.resolve(userPrompt, this.sessionConfig.cwd, this.getProjectId());
+      let effectivePrompt = resolved.cleanedPrompt;
+      if (resolved.injectedContext) {
+        effectivePrompt = `${effectivePrompt}\n\n[INJECTED CONTEXT SHORTCUTS (${resolved.appliedShortcuts.join(', ')})]:\n${resolved.injectedContext}`;
+        this.emit('verification', `[Context Shortcuts]: Injected ${resolved.appliedShortcuts.join(', ')}`);
+      }
+
       if (!this.activeSkillName) {
-        const matched = this.skillRegistry.matchSkillsByIntent(userPrompt, 1);
+        const matched = this.skillRegistry.matchSkillsByIntent(effectivePrompt, 1);
         if (matched.length > 0) {
           this.activeSkillName = matched[0].name;
         }
       }
 
       this.reconcileDanglingToolCalls();
-      this.refreshSystemPrompt();
+      this.refreshSystemPrompt(effectivePrompt);
 
-      const isSurgicalTask = QueryEngine.isSurgicalFixOrTargetedPrompt(userPrompt);
+      const isSurgicalTask = QueryEngine.isSurgicalFixOrTargetedPrompt(effectivePrompt);
       if (isSurgicalTask) {
         this.isExplorationPhase = false;
       }
 
       // Auto-transition out of Plan Mode when an explicit coding/execution directive is given
-      if (this.sessionConfig.permissionMode === 'plan' && QueryEngine.isExecutionDirective(userPrompt)) {
+      if (this.sessionConfig.permissionMode === 'plan' && QueryEngine.isExecutionDirective(effectivePrompt)) {
         this.setPermissionMode('default');
         this.emit(
           'verification',
@@ -996,7 +1047,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       const userMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
-        content: userPrompt,
+        content: effectivePrompt,
         timestamp: Date.now(),
       };
       this.messages.push(userMsg);
@@ -1053,11 +1104,12 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         }
 
         turnCount++;
+        const effectiveMaxTokens = this.getEffectiveMaxContextTokens();
 
-        // 2. Observation Pruning: Evict old verbose tool outputs
+        // 2. Observation Pruning: Evict old verbose tool outputs with AST skeletons
         const pruneResult = ObservationPruner.pruneToolObservations(
           this.messages,
-          config.maxContextTokens
+          effectiveMaxTokens
         );
         if (pruneResult.pruned) {
           this.messages = pruneResult.messages;
@@ -1065,10 +1117,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           this.emit('prune');
         }
 
-        // 3. Trajectory Compression: Summarize middle turns if token threshold is crossed
+        // 3. Trajectory Compression: Semantic Distillation of middle turns if token threshold is crossed
         const compressionResult = TrajectoryCompressor.compressIfNeeded(
           this.messages,
-          config.maxContextTokens,
+          effectiveMaxTokens,
           config.autoCompactThreshold
         );
         if (compressionResult.compressed) {

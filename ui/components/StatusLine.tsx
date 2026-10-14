@@ -26,30 +26,7 @@ function getContextBar(pct: number, width: number = 8): string {
 }
 
 export function resolveMaxContext(model: string, explicitMax?: number): number {
-  if (explicitMax && explicitMax > 0) return explicitMax;
-
-  const direct = ModelRegistry.get(model);
-  if (direct?.contextWindow) return direct.contextWindow;
-
-  // Handle prefixed models like "ocz/gemini-3.8-flash" or "google/gemini-1.5-flash"
-  const baseName = model.includes('/') ? model.split('/').pop() || model : model;
-  const baseProfile = ModelRegistry.get(baseName);
-  if (baseProfile?.contextWindow) return baseProfile.contextWindow;
-
-  const m = model.toLowerCase();
-  if (m.includes('gemini-1.5') || m.includes('gemini-2.0') || m.includes('gemini-2.5') || m.includes('gemini-3')) {
-    return 1_048_576;
-  }
-  if (m.includes('claude-3-7') || m.includes('claude-3-5') || m.includes('claude-3')) {
-    return 200_000;
-  }
-  if (m.includes('gpt-4o') || m.includes('o1') || m.includes('o3')) {
-    return 128_000;
-  }
-  if (m.includes('deepseek')) {
-    return 64_000;
-  }
-  return 200_000;
+  return ModelRegistry.resolveModelContextWindow(model, explicitMax);
 }
 
 /**
