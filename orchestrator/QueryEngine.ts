@@ -135,6 +135,22 @@ export class QueryEngine extends EventEmitter {
         this.sessionState.provider = sessionConfig.provider;
       }
       this.sessionState.permissionMode = sessionConfig.permissionMode;
+
+      // Self-healing: check if restored provider/model was swapped in a previous session
+      const KNOWN_PROVIDERS = ['openai', 'anthropic', 'google', 'gemini', 'deepseek', 'ollama'];
+      if (
+        this.sessionState.model &&
+        this.sessionState.provider &&
+        KNOWN_PROVIDERS.includes(this.sessionState.model.toLowerCase()) &&
+        !KNOWN_PROVIDERS.includes(this.sessionState.provider.toLowerCase())
+      ) {
+        const temp = this.sessionState.provider;
+        this.sessionState.provider = this.sessionState.model.toLowerCase() === 'gemini' ? 'google' : this.sessionState.model.toLowerCase();
+        this.sessionState.model = temp;
+        this.sessionConfig.provider = this.sessionState.provider;
+        this.sessionConfig.model = this.sessionState.model;
+      }
+
       SessionStore.updateModel(this.sessionState.id, this.sessionState.provider, this.sessionState.model);
     } else {
       this.sessionState = SessionStore.createSession(sessionConfig);
@@ -549,11 +565,21 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   updateSessionModel(provider: string, model: string): void {
-    this.sessionConfig.provider = provider;
-    this.sessionConfig.model = model;
-    this.sessionState.provider = provider;
-    this.sessionState.model = model;
-    SessionStore.updateModel(this.sessionState.id, provider, model);
+    const KNOWN_PROVIDERS = ['openai', 'anthropic', 'google', 'gemini', 'deepseek', 'ollama'];
+    let effectiveProvider = provider;
+    let effectiveModel = model;
+
+    // Self-healing: if provider and model were swapped
+    if (KNOWN_PROVIDERS.includes(model.toLowerCase()) && !KNOWN_PROVIDERS.includes(provider.toLowerCase())) {
+      effectiveProvider = model.toLowerCase() === 'gemini' ? 'google' : model.toLowerCase();
+      effectiveModel = provider;
+    }
+
+    this.sessionConfig.provider = effectiveProvider;
+    this.sessionConfig.model = effectiveModel;
+    this.sessionState.provider = effectiveProvider;
+    this.sessionState.model = effectiveModel;
+    SessionStore.updateModel(this.sessionState.id, effectiveProvider, effectiveModel);
   }
 
   updateMaxTurns(maxTurns: number): void {
@@ -696,6 +722,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   requestConfirmation(prompt: string, details?: PermissionRequestDetails): Promise<boolean> {
+    if (this.sessionConfig.permissionMode === 'bypassPermissions') {
+      return Promise.resolve(true);
+    }
+
     return new Promise<boolean>((resolve) => {
       const id = randomUUID();
       const toolName = details?.toolName || 'unknown_tool';
@@ -840,6 +870,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   private trySwitchFallbackProvider(currentError: string): { provider: BaseProvider; model: string } | null {
+    // If user is intentionally connected to a local proxy (like 9Router),
+    // do not hijack the connection to a cloud provider with strict rate limits.
+    const isCustomProxy = (process.env.OPENAI_BASE_URL || '').includes('20128') ||
+                          (process.env.OPENAI_BASE_URL || '').includes('localhost') ||
+                          (process.env.OPENAI_BASE_URL || '').includes('127.0.0.1');
+    if (this.sessionConfig.provider === 'openai' && isCustomProxy) {
+      return null;
+    }
+
     ModelRouter.markProviderFailure(this.sessionConfig.provider);
     const fallback = ModelRouter.getActiveFallback(this.sessionConfig.provider, [
       { model: 'gemini-2.5-flash', provider: 'gemini' },
@@ -1099,7 +1138,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             ? `${assistantContent}\n\n[Warning: Stream interrupted - ${formattedErr}]`
             : formattedErr;
         } else if (!assistantContent && pendingToolCalls.length === 0) {
-          assistantContent = '[Notice]: The model returned an empty response. Please verify your provider settings or prompt.';
+          if (assistantThought && assistantThought.trim().length > 0) {
+            assistantContent = assistantThought;
+          } else if (turnFinishReason === 'content_filter') {
+            assistantContent = '[Notice]: The model response was blocked by upstream safety/content filters. Please adjust your prompt.';
+          } else if (turnFinishReason === 'max_tokens') {
+            assistantContent = '[Notice]: The model reached the max token limit before generating a completion. Try increasing maxTokens or asking a more focused question.';
+          } else {
+            assistantContent = '[Notice]: The model returned an empty response. Please verify your provider settings or prompt.';
+          }
           this.emit('text', assistantContent);
         }
 

@@ -32,6 +32,13 @@ export class ConnectionRegistry {
   }
 
   static getDefault(): ConnectionProfile {
+    const configuredProvider = process.env.DEFAULT_PROVIDER?.toLowerCase();
+    if (configuredProvider) {
+      const matched = ConnectionRegistry.findByProvider(configuredProvider);
+      if (matched) {
+        return matched;
+      }
+    }
     const profile = ConnectionRegistry.get(ConnectionRegistry.defaultConnectionId);
     if (!profile) {
       throw new ProviderError({
@@ -55,6 +62,7 @@ export class ConnectionRegistry {
   }
 
   static findByProvider(providerId: string): ConnectionProfile | undefined {
+    if (!providerId) return undefined;
     const lower = providerId.toLowerCase();
     // Direct match (e.g., 'anthropic-main' or 'anthropic')
     let profile = ConnectionRegistry.get(lower);
@@ -69,6 +77,17 @@ export class ConnectionRegistry {
         break;
       }
     }
+
+    // Fallback: If providerId looks like a 9Router or OpenAI-compatible model (e.g. 'ag/gemini-3.8-flash-high', 'ocz/...', 'gh/...')
+    if (!profile && (lower.startsWith('ag/') || lower.startsWith('ocz/') || lower.startsWith('gh/') || lower.includes('/'))) {
+      const isLocalProxy = (process.env.OPENAI_BASE_URL || '').includes('20128') ||
+                           (process.env.OPENAI_BASE_URL || '').includes('localhost') ||
+                           (process.env.OPENAI_BASE_URL || '').includes('127.0.0.1');
+      if (isLocalProxy || process.env.OPENAI_API_KEY) {
+        profile = ConnectionRegistry.get('openai-main');
+      }
+    }
+
     if (profile && profile.providerId === 'openai' && process.env.OPENAI_BASE_URL) {
       return {
         ...profile,

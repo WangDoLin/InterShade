@@ -91,9 +91,16 @@ export class OpenAIProvider extends BaseProvider {
           yield { type: 'text_delta', delta: delta.content };
         }
 
-        // Handle reasoning content (DeepSeek R1 / o3-mini)
-        if ('reasoning_content' in delta && typeof (delta as Record<string, unknown>).reasoning_content === 'string') {
-          yield { type: 'thought_delta', delta: (delta as Record<string, unknown>).reasoning_content as string };
+        // Handle reasoning content (DeepSeek R1, 9Router, o3-mini, Gemini proxies)
+        const deltaRecord = delta as Record<string, unknown>;
+        const thoughtContent =
+          (typeof deltaRecord.reasoning_content === 'string' && deltaRecord.reasoning_content) ||
+          (typeof deltaRecord.reasoning === 'string' && deltaRecord.reasoning) ||
+          (typeof deltaRecord.thought === 'string' && deltaRecord.thought) ||
+          (typeof deltaRecord.thinking === 'string' && deltaRecord.thinking);
+
+        if (thoughtContent) {
+          yield { type: 'thought_delta', delta: thoughtContent };
         }
 
         // Handle streaming tool calls
@@ -153,9 +160,11 @@ export class OpenAIProvider extends BaseProvider {
     const finalReason =
       finishReasonFromChunk === 'length'
         ? 'max_tokens'
+        : finishReasonFromChunk === 'content_filter'
+        ? 'content_filter'
         : pendingToolCalls.size > 0
         ? 'tool_use'
         : 'end_turn';
-    yield { type: 'finish', reason: finalReason };
+    yield { type: 'finish', reason: finalReason as 'end_turn' | 'tool_use' | 'max_tokens' | 'stop' };
   }
 }
