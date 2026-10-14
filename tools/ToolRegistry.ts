@@ -13,11 +13,15 @@ import { SemanticSearchTool } from './search/SemanticSearchTool.js';
 import { TaskTool } from './task/TaskTool.js';
 import { ToolSearchTool } from './meta/ToolSearchTool.js';
 import { MemorySearchTool } from './search/MemorySearchTool.js';
+import { MemoryRecordTool } from './search/MemoryRecordTool.js';
 import { SkillDiscoveryTool } from './agentic/SkillDiscoveryTool.js';
 import { SkillActivateTool } from './agentic/SkillActivateTool.js';
 import { SkillAuditTool } from './agentic/SkillAuditTool.js';
 import { LspTool } from './code/LspTool.js';
 import { BatchExecuteTool } from './execution/BatchExecuteTool.js';
+import { GitCommitTool } from './execution/GitCommitTool.js';
+import { RepoMapTool } from './context/RepoMapTool.js';
+import { CodeReviewSentinelTool } from './code/CodeReviewSentinelTool.js';
 
 import { WebFetchTool } from './web/WebFetchTool.js';
 import {
@@ -60,11 +64,15 @@ export class ToolRegistry {
     this.register(new TaskTool());
     this.register(new ToolSearchTool(this));
     this.register(new MemorySearchTool());
+    this.register(new MemoryRecordTool());
     this.register(new SkillDiscoveryTool());
     this.register(new SkillActivateTool());
     this.register(new SkillAuditTool());
     this.register(new LspTool());
     this.register(new BatchExecuteTool(this));
+    this.register(new GitCommitTool());
+    this.register(new RepoMapTool());
+    this.register(new CodeReviewSentinelTool());
 
     // Serena Semantic Engine tools
     this.register(new SerenaOutlineTool());
