@@ -9,6 +9,7 @@ import { FtsMemoryService } from '../../services/memory/FtsMemoryService.js';
 import { SkillCrystallizer } from '../../services/skills/SkillCrystallizer.js';
 import { SkillRegistry } from '../../services/skills/SkillRegistry.js';
 import { SkillSecurityAuditor } from '../../services/skills/SkillSecurityAuditor.js';
+import { SkillHubClient } from '../../services/skills/SkillHubClient.js';
 import { ShadowWorktree } from '../../security/ShadowWorktree.js';
 import { ClaudeAgentCoordinator } from '../../services/agent/ClaudeAgentCoordinator.js';
 import type { ToolExecutionContext } from '../../types/index.js';
@@ -1020,31 +1021,41 @@ export const rememberCommand: LocalCommand = {
 
 function formatSkillCatalogEntry(pkg: { metadata: { name: string; version: string; description: string; tags?: string[] }; tier: string }): string {
   const tagsStr = pkg.metadata.tags && pkg.metadata.tags.length > 0 ? ` [${pkg.metadata.tags.slice(0, 3).join(', ')}]` : '';
-  return `  - ${pkg.metadata.name} (v${pkg.metadata.version}, ${pkg.tier})${tagsStr}: ${pkg.metadata.description}`;
+  const firstLineDesc = pkg.metadata.description.split('\n')[0].slice(0, 100);
+  return `  - ${pkg.metadata.name} (v${pkg.metadata.version}, ${pkg.tier})${tagsStr}: ${firstLineDesc}`;
 }
 
 function handleListSkills(registry: SkillRegistry, cwd: string): string {
   const discovered = registry.discoverAllSkills();
   const crystallized = SkillCrystallizer.loadSkills(cwd);
 
-  const lines: string[] = ['InterShader Integrated Skills Ecosystem:'];
-  if (discovered.length === 0) {
-    lines.push('  No structured skills registered in skills/ directories.');
-  } else {
-    lines.push(`Discovered Skills (${discovered.length}):`);
-    for (const s of discovered) {
-      lines.push(formatSkillCatalogEntry(s));
+  const lines: string[] = [`InterShader Integrated Skills Ecosystem (${discovered.length} total active skills):`];
+  
+  const tiers: Array<{ name: string; tier: 'workspace' | 'user' | 'global' | 'builtin' }> = [
+    { name: 'Workspace Tier (.intershader/skills, .agents/skills)', tier: 'workspace' },
+    { name: 'User Tier (~/.intershader/skills)', tier: 'user' },
+    { name: 'Global IDE Tier (~/.gemini/config/skills, ~/.claude/skills)', tier: 'global' },
+    { name: 'Built-in Core Tier (packageRoot/skills)', tier: 'builtin' },
+  ];
+
+  for (const t of tiers) {
+    const tierSkills = discovered.filter((s) => s.tier === t.tier);
+    if (tierSkills.length > 0) {
+      lines.push(`\n[${t.name}] - ${tierSkills.length} skills:`);
+      for (const s of tierSkills) {
+        lines.push(formatSkillCatalogEntry(s));
+      }
     }
   }
 
   if (crystallized.length > 0) {
-    lines.push(`\nAutonomously Crystallized Skills (${crystallized.length}):`);
+    lines.push(`\n[Autonomously Crystallized Skills] (${crystallized.length}):`);
     for (const sk of crystallized) {
       lines.push(`  - [${sk.name}] Triggers: [${sk.intentTriggers.slice(0, 4).join(', ')}] (${(sk.confidence * 100).toFixed(0)}%)`);
     }
   }
 
-  lines.push('\nUsage: /skills info <name> | /skills audit [name] | /skills activate <name>');
+  lines.push('\nCommands: /skills search <keyword> | /skills install <name> | /skills info <name> | /skills activate <name>');
   return lines.join('\n');
 }
 
@@ -1122,17 +1133,85 @@ function handleActivateSkill(registry: SkillRegistry, skillName: string, session
   ].join('\n');
 }
 
+function handleSearchSkills(cwd: string, keyword?: string): string {
+  if (!keyword) {
+    return 'Error: Please specify search keyword. Usage: /skills search <keyword>';
+  }
+  const hub = new SkillHubClient(cwd);
+  const result = hub.search(keyword);
+
+  const lines: string[] = [`Skill Search Results for "${keyword}":\n`];
+  if (result.local.length > 0) {
+    lines.push(`Installed Locally (${result.local.length}):`);
+    for (const s of result.local) {
+      lines.push(`  - [${s.tier.toUpperCase()}] ${s.name} (v${s.version}): ${s.description.slice(0, 80)}...`);
+    }
+  }
+
+  if (result.remote.length > 0) {
+    lines.push(`\nAvailable in Curated Catalog (${result.remote.length}):`);
+    for (const r of result.remote) {
+      lines.push(`  - [CATALOG] ${r.vendor}/${r.name}: ${r.description} (Tags: ${r.tags.join(', ')})`);
+    }
+    lines.push('\nInstall any skill using: /skills install <vendor/name> or /skills install <name>');
+  }
+
+  if (result.local.length === 0 && result.remote.length === 0) {
+    lines.push('  No matching skills found locally or in curated remote catalog.');
+  }
+
+  return lines.join('\n');
+}
+
+async function handleInstallSkill(cwd: string, identifier?: string, isGlobal: boolean = false): Promise<string> {
+  if (!identifier) {
+    return 'Error: Please specify skill identifier or URL. Usage: /skills install <vendor/name> [--global]';
+  }
+  const hub = new SkillHubClient(cwd);
+  try {
+    const res = await hub.install(identifier, isGlobal);
+    return [
+      `[SUCCESS] ${res.message}`,
+      `File: ${res.installPath}`,
+      `Security Audit: ${res.auditPassed ? 'PASSED (Clean)' : 'WARNING'}`,
+      `You can now activate it via: /skills activate ${res.skillName}`
+    ].join('\n');
+  } catch (err) {
+    return `[INSTALLATION FAILED]: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+function handleUninstallSkill(cwd: string, name?: string): string {
+  if (!name) {
+    return 'Error: Please specify skill name to uninstall. Usage: /skills uninstall <name>';
+  }
+  const hub = new SkillHubClient(cwd);
+  const res = hub.uninstall(name);
+  return res.message;
+}
+
 export const skillsCommand: LocalCommand = {
   name: 'skills',
-  description: 'List, inspect, audit, or activate autonomous development skills',
+  description: 'List, search, install, audit, or activate development skills',
   type: 'local',
   aliases: ['skill'],
-  execute: (ctx) => {
+  execute: async (ctx) => {
     const sub = ctx.args[0]?.toLowerCase();
     const arg = ctx.args[1];
+    const isGlobal = ctx.args.includes('--global') || ctx.args.includes('-g');
     const registry = new SkillRegistry(ctx.cwd);
 
     switch (sub) {
+      case 'search':
+      case 'find':
+        return handleSearchSkills(ctx.cwd, arg);
+      case 'install':
+      case 'add':
+        return await handleInstallSkill(ctx.cwd, arg, isGlobal);
+      case 'uninstall':
+      case 'remove':
+      case 'rm':
+        return handleUninstallSkill(ctx.cwd, arg);
       case 'info':
         return handleSkillInfo(registry, arg);
       case 'audit':
