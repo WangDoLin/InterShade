@@ -39,7 +39,7 @@ export class ShellTool extends BaseTool<{ command: string; timeoutMs?: number },
     }
 
     const isDangerous = DANGEROUS_PATTERNS.some((p) => p.test(args.command));
-    if (isDangerous && context.askConfirmation) {
+    if (isDangerous && context.permissionMode !== 'bypassPermissions' && context.askConfirmation) {
       const confirmed = await context.askConfirmation(
         `Confirm execution of potentially destructive command: "${args.command}"?`
       );

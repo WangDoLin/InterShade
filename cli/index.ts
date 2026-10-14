@@ -377,6 +377,10 @@ program
   .option('-l, --lang <locale>', 'UI language locale (en, vi, ja, zh, es, fr, de, ko, ru)')
   .option('--plan', 'Launch agent in Plan Mode (Read-Only)', false)
   .option('--proof', 'Launch agent in Proof Mode (Strict empirical verification before done)', false)
+  .option('-y, --yes', 'Automatically grant all permissions without confirmation prompts', false)
+  .option('--bypass-permissions', 'Bypass all permission checks and confirmation prompts', false)
+  .option('--all-perms', 'Grant all permissions (alias for --bypass-permissions)', false)
+  .option('--yolo', 'YOLO mode: give agent all permissions without asking', false)
   .option('-n, --new', 'Start a fresh new session instead of resuming previous', false)
   .option('--session <id>', 'Resume a specific session ID')
   .option('-c, --cwd <path>', 'Working directory path', process.cwd())
@@ -389,7 +393,8 @@ program
 
     const targetCwd = options.cwd || process.cwd();
     const initialPrompt = promptArgs && promptArgs.length > 0 ? promptArgs.join(' ') : undefined;
-    const permissionMode: PermissionMode = options.plan ? 'plan' : 'default';
+    const isBypass = Boolean(options.yes || options.bypassPermissions || options.allPerms || options.yolo);
+    const permissionMode: PermissionMode = options.plan ? 'plan' : isBypass ? 'bypassPermissions' : 'default';
 
     const defaultProvider = config.defaultProvider;
     const defaultModel = config.defaultModel;
