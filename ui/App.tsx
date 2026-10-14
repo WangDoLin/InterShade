@@ -10,6 +10,9 @@ import { InteractivePrompt } from './components/InteractivePrompt.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
 import { HistoryInspectionView } from './components/HistoryInspectionView.js';
 import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
+import { SwarmDashboardView } from './components/SwarmDashboardView.js';
+import { SwarmCoordinator } from '../engine/swarm/SwarmCoordinator.js';
+import type { SwarmTask, SwarmProgressEvent, SwarmRole } from '../engine/swarm/SwarmTypes.js';
 import { TerminalMouseManager } from './services/TerminalMouseManager.js';
 import { extractPromptTurns, truncatePromptText } from './utils/turnExtractor.js';
 import { PlanManager } from '../state/PlanManager.js';
@@ -39,6 +42,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
   const [viewingTurnIndex, setViewingTurnIndex] = useState<number | null>(null);
+  const [swarmTasks, setSwarmTasks] = useState<SwarmTask[]>([]);
+  const [swarmStatus, setSwarmStatus] = useState<SwarmProgressEvent['overallStatus'] | null>(null);
 
   useEffect(() => {
     const mouseMgr = TerminalMouseManager.getInstance();
@@ -695,6 +700,47 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     }
   };
 
+  const handleSwarmSubmit = async (promptSlots: Array<{ prompt: string; role: SwarmRole }>) => {
+    setIsBusy(true);
+    isBusyRef.current = true;
+
+    const coordinator = new SwarmCoordinator();
+    coordinator.on('progress', (evt: SwarmProgressEvent) => {
+      setSwarmTasks([...evt.tasks]);
+      setSwarmStatus(evt.overallStatus);
+    });
+
+    const userMsg: UnifiedMessage = {
+      id: randomUUID(),
+      role: 'user',
+      content: `[Swarm Multi-Session Dispatch]:\n${promptSlots.map((s, i) => `${i + 1}. [${s.role.toUpperCase()}]: "${s.prompt}"`).join('\n')}`,
+      timestamp: Date.now(),
+    };
+    queryEngine.appendSyntheticMessage(userMsg);
+    setMessages([...queryEngine.getMessages()]);
+
+    try {
+      const { tasks, mergeResult } = await coordinator.runParallel(promptSlots, sessionState.cwd, true);
+      const summaryMsg: UnifiedMessage = {
+        id: randomUUID(),
+        role: 'assistant',
+        content: [
+          `🐝 Swarm Completed (${tasks.length} Parallel Sessions):`,
+          ...tasks.map((t) => `  * [${t.role.toUpperCase()}]: ${t.status === 'completed' ? 'SUCCESS' : 'FAILED'} - ${t.resultSummary || t.errorMessage || 'Done'}`),
+          mergeResult ? `\n🔀 Integration: ${mergeResult.message}` : '',
+        ].filter(Boolean).join('\n'),
+        timestamp: Date.now() + 1,
+      };
+      queryEngine.appendSyntheticMessage(summaryMsg);
+      setMessages([...queryEngine.getMessages()]);
+    } catch (err: unknown) {
+      handleError(err);
+    } finally {
+      setIsBusy(false);
+      isBusyRef.current = false;
+    }
+  };
+
   handleUserSubmitRef.current = handleUserSubmit;
 
   const totalTokens = sessionState.totalInputTokens + sessionState.totalOutputTokens;
@@ -800,6 +846,13 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             isBusy={isBusy}
           />
 
+          {swarmTasks.length > 0 && (
+            <SwarmDashboardView
+              tasks={swarmTasks}
+              overallStatus={swarmStatus || 'running'}
+            />
+          )}
+
           {pendingPermission ? (
             <PermissionPrompt
               toolName={pendingPermission.toolName}
@@ -813,6 +866,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           ) : (
             <InteractivePrompt
               onSubmit={handleUserSubmit}
+              onSubmitSwarm={handleSwarmSubmit}
               onAbort={handleAbort}
               onClearQueue={handleClearQueue}
               isBusy={isBusy}

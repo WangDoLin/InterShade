@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { TerminalTextInput } from './TerminalTextInput.js';
 import { t } from '../../services/i18n/index.js';
 import type { SlashCommand } from '../../cli/commands/types.js';
 import { CommandAutocomplete } from './CommandAutocomplete.js';
+import { SwarmCoordinator } from '../../engine/swarm/SwarmCoordinator.js';
+import type { SwarmRole } from '../../engine/swarm/SwarmTypes.js';
 import { THEME } from '../theme.js';
 
 export interface InteractivePromptProps {
   onSubmit: (value: string) => void;
+  onSubmitSwarm?: (prompts: Array<{ prompt: string; role: SwarmRole }>) => void;
   onAbort?: () => void;
   onClearQueue?: () => void;
   disabled?: boolean;
@@ -17,8 +20,15 @@ export interface InteractivePromptProps {
   availableCommands?: SlashCommand[];
 }
 
+interface PromptSlot {
+  id: string;
+  text: string;
+  role: SwarmRole;
+}
+
 export const InteractivePrompt: React.FC<InteractivePromptProps> = ({
   onSubmit,
+  onSubmitSwarm,
   onAbort,
   onClearQueue,
   disabled = false,
@@ -27,28 +37,107 @@ export const InteractivePrompt: React.FC<InteractivePromptProps> = ({
   focus,
   availableCommands = [],
 }) => {
-  const [value, setValue] = useState('');
+  const [slots, setSlots] = useState<PromptSlot[]>([
+    { id: 'slot-1', text: '', role: 'general' },
+  ]);
+  const [activeSlotIndex, setActiveSlotIndex] = useState(0);
 
-  const handleSubmit = (text: string) => {
-    if (disabled || !text.trim()) return;
-    const trimmed = text.trim();
-    setValue('');
-    onSubmit(trimmed);
+  // Global keyboard shortcut listener for Multi-Session Slot Navigation
+  useInput(
+    (input, key) => {
+      if (disabled || isBusy) return;
+
+      // Ctrl+N (ASCII 14 / '\x0e'): Add an extra prompt box for another concurrent session!
+      if (input === '\x0e') {
+        setSlots((prev) => {
+          if (prev.length >= 4) return prev; // max 4 parallel session slots
+          const newId = `slot-${Date.now().toString(36).slice(-4)}`;
+          const next: PromptSlot[] = [...prev, { id: newId, text: '', role: 'general' }];
+          setActiveSlotIndex(next.length - 1);
+          return next;
+        });
+        return;
+      }
+
+      // Tab: Switch focus between session prompt boxes
+      if (key.tab && slots.length > 1) {
+        setActiveSlotIndex((idx) => (idx + 1) % slots.length);
+        return;
+      }
+
+      // Escape: If multiple slots exist and current slot is empty, remove it
+      if (key.escape) {
+        if (slots.length > 1 && !slots[activeSlotIndex]?.text) {
+          setSlots((prev) => {
+            const next = prev.filter((_, i) => i !== activeSlotIndex);
+            setActiveSlotIndex(Math.max(0, activeSlotIndex - 1));
+            return next;
+          });
+          return;
+        }
+      }
+    },
+    { isActive: !disabled && !isBusy }
+  );
+
+  const handleSlotChange = (newText: string, index: number) => {
+    setSlots((prev) => {
+      const next = [...prev];
+      const inferred = SwarmCoordinator.inferRoleAndScope(newText);
+      next[index] = {
+        ...next[index],
+        text: newText,
+        role: inferred.role,
+      };
+      return next;
+    });
   };
 
-  // Up arrow: load queued prompt back into input for editing
+  const handleSubmit = (submittedText: string, index: number) => {
+    if (disabled) return;
+
+    const updatedSlots = slots.map((s, i) => (i === index ? { ...s, text: submittedText } : s));
+    const validSlots = updatedSlots.filter((s) => s.text.trim().length > 0);
+
+    if (validSlots.length > 1 && onSubmitSwarm) {
+      // Dispatch multi-session parallel swarm execution
+      onSubmitSwarm(
+        validSlots.map((s) => ({
+          prompt: s.text.trim(),
+          role: s.role,
+        }))
+      );
+      setSlots([{ id: 'slot-1', text: '', role: 'general' }]);
+      setActiveSlotIndex(0);
+    } else if (validSlots.length >= 1) {
+      // Normal single session prompt execution
+      const singleText = validSlots[0].text.trim();
+      setSlots([{ id: 'slot-1', text: '', role: 'general' }]);
+      setActiveSlotIndex(0);
+      onSubmit(singleText);
+    }
+  };
+
   const handleUpArrow = () => {
-    if (!value && queuedPrompt) {
-      setValue(queuedPrompt);
+    if (slots.length === 1 && !slots[0].text && queuedPrompt) {
+      setSlots([{ id: 'slot-1', text: queuedPrompt, role: 'general' }]);
       if (onClearQueue) {
         onClearQueue();
       }
     }
   };
 
-  // Escape: delete queued prompt if input is empty, otherwise trigger onAbort
   const handleEscape = () => {
-    if (!value && queuedPrompt && onClearQueue) {
+    if (slots.length > 1) {
+      setSlots((prev) => {
+        const next = prev.filter((_, i) => i !== activeSlotIndex);
+        setActiveSlotIndex(Math.max(0, activeSlotIndex - 1));
+        return next;
+      });
+      return;
+    }
+
+    if (!slots[0]?.text && queuedPrompt && onClearQueue) {
       onClearQueue();
       return;
     }
@@ -57,66 +146,118 @@ export const InteractivePrompt: React.FC<InteractivePromptProps> = ({
     }
   };
 
-  const borderColor = queuedPrompt
-    ? 'yellow'
-    : isBusy
-    ? 'cyan'
-    : THEME.colors.border;
+  const getRoleBadge = (role: SwarmRole) => {
+    switch (role) {
+      case 'backend':
+        return { icon: '⚙️', color: 'blue', label: 'Backend Specialist' };
+      case 'frontend':
+        return { icon: '🎨', color: 'magenta', label: 'Frontend Specialist' };
+      case 'architect':
+        return { icon: '🏗️', color: 'yellow', label: 'Lead Architect' };
+      case 'tester':
+        return { icon: '🧪', color: 'green', label: 'Test Specialist' };
+      case 'reviewer':
+        return { icon: '🔍', color: 'cyan', label: 'Code Reviewer' };
+      default:
+        return { icon: '🤖', color: 'white', label: 'General Worker' };
+    }
+  };
+
+  const activeSlot = slots[activeSlotIndex] || slots[0];
 
   return (
     <Box flexDirection="column" marginY={0}>
-      {/* Autocomplete suggestion popup when user types '/' */}
-      <CommandAutocomplete input={value} commands={availableCommands} />
+      {/* Autocomplete suggestion popup when user types '/' in single slot */}
+      {slots.length === 1 && (
+        <CommandAutocomplete input={activeSlot.text} commands={availableCommands} />
+      )}
 
-      <Box
-        flexDirection="column"
-        borderStyle="round"
-        borderColor={borderColor}
-        paddingX={1}
-        marginTop={0}
-      >
-        <Box flexDirection="row" alignItems="center">
-          <Text bold color={isBusy ? 'cyan' : THEME.colors.accent}>
-            {THEME.brand.promptSymbol}{' '}
-          </Text>
-          <TerminalTextInput
-            value={value}
-            onChange={setValue}
-            onSubmit={handleSubmit}
-            onAbort={onAbort}
-            onEscape={handleEscape}
-            onUpArrow={handleUpArrow}
-            focus={focus !== undefined ? focus : !disabled}
-            placeholder={
-              isBusy
-                ? queuedPrompt
-                  ? t('prompt.queuedReplace')
-                  : t('prompt.busyPlaceholder')
-                : disabled
-                ? t('prompt.submitting')
-                : t('prompt.placeholder')
-            }
-          />
-        </Box>
+      {slots.map((slot, index) => {
+        const isFocused = index === activeSlotIndex;
+        const badge = getRoleBadge(slot.role);
+        const borderColor = queuedPrompt
+          ? 'yellow'
+          : isBusy
+          ? 'cyan'
+          : isFocused
+          ? THEME.colors.accent
+          : 'gray';
 
-        {queuedPrompt && (
-          <Box marginTop={0}>
-            <Text color="yellow">
-              [Queued next]: &quot;{queuedPrompt.length > 60 ? `${queuedPrompt.slice(0, 57)}...` : queuedPrompt}&quot;
-            </Text>
+        return (
+          <Box
+            key={slot.id}
+            flexDirection="column"
+            borderStyle="round"
+            borderColor={borderColor}
+            paddingX={1}
+            marginBottom={slots.length > 1 && index < slots.length - 1 ? 1 : 0}
+            marginTop={0}
+          >
+            {/* Header when multiple session slots are open */}
+            {slots.length > 1 && (
+              <Box flexDirection="row" justifyContent="space-between" marginBottom={0}>
+                <Text bold color={badge.color as any}>
+                  {badge.icon} [Session #{index + 1} - {badge.label}]
+                  {isFocused ? ' ◄ Active Input' : ''}
+                </Text>
+                <Text color="gray">
+                  Slot {index + 1} of {slots.length} (Press Tab to switch)
+                </Text>
+              </Box>
+            )}
+
+            <Box flexDirection="row" alignItems="center">
+              <Text bold color={isFocused ? (isBusy ? 'cyan' : THEME.colors.accent) : 'gray'}>
+                {THEME.brand.promptSymbol}{' '}
+              </Text>
+              <TerminalTextInput
+                value={slot.text}
+                onChange={(txt) => handleSlotChange(txt, index)}
+                onSubmit={(txt) => handleSubmit(txt, index)}
+                onAbort={onAbort}
+                onEscape={handleEscape}
+                onUpArrow={handleUpArrow}
+                focus={isFocused && (focus !== undefined ? focus : !disabled)}
+                placeholder={
+                  isBusy
+                    ? queuedPrompt
+                      ? t('prompt.queuedReplace')
+                      : t('prompt.busyPlaceholder')
+                    : slots.length > 1
+                    ? `Nhập prompt cho Session #${index + 1} (${badge.label})...`
+                    : disabled
+                    ? t('prompt.submitting')
+                    : t('prompt.placeholder')
+                }
+              />
+            </Box>
+
+            {queuedPrompt && slots.length === 1 && (
+              <Box marginTop={0}>
+                <Text color="yellow">
+                  [Queued next]: &quot;
+                  {queuedPrompt.length > 60 ? `${queuedPrompt.slice(0, 57)}...` : queuedPrompt}
+                  &quot;
+                </Text>
+              </Box>
+            )}
+
+            {isFocused && (
+              <Box marginTop={0}>
+                <Text color={THEME.colors.muted}>
+                  {slots.length > 1
+                    ? '[Tab] Chuyển khung session │ [Ctrl+N] Thêm session │ [Enter] Chạy song song │ [Esc] Hủy khung'
+                    : isBusy
+                    ? queuedPrompt
+                      ? '[Up Arrow] Edit queue │ [Esc] Delete queue │ [Enter] Replace │ [Ctrl+C] Stop agent'
+                      : '[Enter] Queue next │ [Esc / Ctrl+C] Stop agent │ [/help] Commands'
+                    : '[Enter] Gửi │ [Ctrl+N] Thêm khung session khác │ [/swarm] Swarm │ [/help] Lệnh'}
+                </Text>
+              </Box>
+            )}
           </Box>
-        )}
-
-        <Box marginTop={0}>
-          <Text color={THEME.colors.muted}>
-            {isBusy
-              ? queuedPrompt
-                ? '[Up Arrow] Edit queue │ [Esc] Delete queue │ [Enter] Replace │ [Ctrl+C] Stop agent'
-                : '[Enter] Queue next │ [Esc / Ctrl+C] Stop agent │ [/help] Commands'
-              : '[Enter] Submit │ [/help] Commands │ [/plan] Plan Mode │ [/model] Model │ [Ctrl+C] Exit'}
-          </Text>
-        </Box>
-      </Box>
+        );
+      })}
     </Box>
   );
 };

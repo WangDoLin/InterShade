@@ -21,6 +21,7 @@ import { ConnectionRegistry } from '../../providers/core/ConnectionRegistry.js';
 import { ProviderHealthChecker } from '../../providers/reliability/ProviderHealthChecker.js';
 import { PlanManager } from '../../state/PlanManager.js';
 import { config } from '../../config/index.js';
+import { swarmCommand } from './swarmCommand.js';
 
 
 export const reviewCommand: PromptCommand = {
@@ -201,9 +202,8 @@ export const modelCommand: LocalCommand = {
     }
 
     const st = ctx.sessionState as Record<string, unknown>;
-    const targetModel = ctx.args[0]?.toLowerCase();
 
-    if (!targetModel) {
+    if (!ctx.args[0]) {
       return [
         'Active Model Gateway Configuration',
         `Current Model:    ${st.model || 'claude-3-7-sonnet'}`,
@@ -213,28 +213,95 @@ export const modelCommand: LocalCommand = {
         '  /models list [provider]           - View all registered models',
         '  /models inspect <provider> <id>   - Inspect model capabilities & limits',
         '  /models discover <connection>     - Query /v1/models dynamically',
-        '  /model <model_name>               - Switch active model',
+        '  /model <model_name>               - Switch active model (e.g. /model ag/gemini-3.8-flash-high)',
+        '  /model <provider> <model_name>    - Switch with explicit provider (e.g. /model openai ag/gemini-3.8-flash-high)',
       ].join('\n');
     }
 
-    let detectedProvider = 'anthropic';
-    if (ctx.args[1]) {
-      detectedProvider = ctx.args[1].toLowerCase();
-    } else if (targetModel.includes('/') || targetModel.startsWith('ag') || targetModel.startsWith('ocz') || targetModel.startsWith('gh/')) {
-      detectedProvider = 'openai';
-    } else if (targetModel.includes('gpt') || targetModel.includes('o1') || targetModel.includes('o3')) {
-      detectedProvider = 'openai';
-    } else if (targetModel.includes('deepseek')) {
-      detectedProvider = 'deepseek';
-    } else if (targetModel.includes('gemini')) {
-      detectedProvider = 'google';
-    } else if (targetModel.includes('llama') || targetModel.includes('qwen')) {
-      detectedProvider = 'ollama';
+    const KNOWN_PROVIDERS: Record<string, string> = {
+      openai: 'openai',
+      anthropic: 'anthropic',
+      claude: 'anthropic',
+      google: 'google',
+      gemini: 'google',
+      deepseek: 'deepseek',
+      ollama: 'ollama',
+    };
+
+    const isLocalProxy = (process.env.OPENAI_BASE_URL || '').includes('20128') ||
+                         (process.env.OPENAI_BASE_URL || '').includes('localhost') ||
+                         (process.env.OPENAI_BASE_URL || '').includes('127.0.0.1');
+
+    let targetProvider = '';
+    let targetModel = '';
+
+    const firstArg = ctx.args[0].trim();
+    const secondArg = ctx.args[1]?.trim();
+
+    // Case 1: Prefix format: /model openai:ag/gemini-3.8-flash-high
+    if (firstArg.includes(':') && !firstArg.startsWith('http')) {
+      const colonIdx = firstArg.indexOf(':');
+      const prefix = firstArg.substring(0, colonIdx).toLowerCase();
+      const modelPart = firstArg.substring(colonIdx + 1);
+      if (KNOWN_PROVIDERS[prefix]) {
+        targetProvider = KNOWN_PROVIDERS[prefix];
+        targetModel = modelPart;
+      }
+    }
+
+    // Case 2: Two arguments: /model openai ag/gemini-3.8-flash-high OR /model ag/gemini-3.8-flash-high openai
+    if (!targetModel && secondArg) {
+      const firstLower = firstArg.toLowerCase();
+      const secondLower = secondArg.toLowerCase();
+
+      if (KNOWN_PROVIDERS[firstLower]) {
+        targetProvider = KNOWN_PROVIDERS[firstLower];
+        targetModel = secondArg;
+      } else if (KNOWN_PROVIDERS[secondLower]) {
+        targetProvider = KNOWN_PROVIDERS[secondLower];
+        targetModel = firstArg;
+      }
+    }
+
+    // Case 3: Single argument: /model ag/gemini-3.8-flash-high OR /model openai
+    if (!targetModel && firstArg) {
+      const firstLower = firstArg.toLowerCase();
+      if (KNOWN_PROVIDERS[firstLower]) {
+        targetProvider = KNOWN_PROVIDERS[firstLower];
+        targetModel = targetProvider === 'openai' && isLocalProxy
+          ? (process.env.DEFAULT_MODEL || 'ag/gemini-3.8-flash-high')
+          : targetProvider === 'openai'
+          ? 'gpt-4o'
+          : targetProvider === 'google'
+          ? 'gemini-2.5-flash'
+          : targetProvider === 'deepseek'
+          ? 'deepseek-chat'
+          : 'claude-3-7-sonnet';
+      } else {
+        targetModel = firstArg;
+        if (isLocalProxy && (targetModel.startsWith('ag') || targetModel.includes('/') || targetModel.includes('gemini') || targetModel.includes('flash'))) {
+          targetProvider = 'openai';
+        } else if (targetModel.includes('/') || targetModel.startsWith('ag') || targetModel.startsWith('ocz') || targetModel.startsWith('gh/')) {
+          targetProvider = 'openai';
+        } else if (targetModel.includes('gpt') || targetModel.includes('o1') || targetModel.includes('o3')) {
+          targetProvider = 'openai';
+        } else if (targetModel.includes('deepseek')) {
+          targetProvider = 'deepseek';
+        } else if (targetModel.includes('gemini')) {
+          targetProvider = 'google';
+        } else if (targetModel.includes('llama') || targetModel.includes('qwen')) {
+          targetProvider = 'ollama';
+        } else if (targetModel.includes('claude')) {
+          targetProvider = 'anthropic';
+        } else {
+          targetProvider = (st.provider as string) || (isLocalProxy ? 'openai' : 'anthropic');
+        }
+      }
     }
 
     st.model = targetModel;
-    st.provider = detectedProvider;
-    return `Switched active model to: ${targetModel} (Provider: ${detectedProvider})`;
+    st.provider = targetProvider;
+    return `Switched active model to: ${targetModel} (Provider: ${targetProvider})`;
   }
 };
 
@@ -469,12 +536,28 @@ export const setupCommand: LocalCommand = {
 
 export const modeCommand: LocalCommand = {
   name: 'mode',
-  description: 'View or switch agent permission mode (default, plan, auto, bypassPermissions)',
+  description: 'View or switch agent permission mode (default, bypass, plan, auto, acceptEdits)',
   type: 'local',
   aliases: ['permissions', 'perm'],
   execute: (ctx) => {
     const st = ctx.sessionState as Record<string, unknown>;
-    const targetMode = ctx.args[0]?.toLowerCase();
+    const rawTarget = ctx.args[0]?.toLowerCase().trim();
+
+    const modeAliases: Record<string, string> = {
+      bypass: 'bypassPermissions',
+      yolo: 'bypassPermissions',
+      all: 'bypassPermissions',
+      'all-perms': 'bypassPermissions',
+      allperms: 'bypassPermissions',
+      'grant-all': 'bypassPermissions',
+      'allow-all': 'bypassPermissions',
+      readonly: 'plan',
+      read: 'plan',
+      normal: 'default',
+      reset: 'default',
+    };
+
+    const targetMode = rawTarget ? modeAliases[rawTarget] || rawTarget : undefined;
     const validModes = ['default', 'plan', 'auto', 'acceptEdits', 'bypassPermissions', 'dontAsk'];
 
     if (!targetMode || !validModes.includes(targetMode)) {
@@ -482,18 +565,57 @@ export const modeCommand: LocalCommand = {
         `Current Permission Mode: ${st.permissionMode || 'default'}`,
         'Valid Modes:',
         '  - default: Ask confirmation before executing mutating actions',
-        '  - plan: Read-only planning mode (blocks all mutations)',
+        '  - bypassPermissions (or: bypass, yolo, all): Bypass all confirmation prompts',
+        '  - plan (or: readonly): Read-only planning mode (blocks all mutations)',
         '  - auto: Autonomous execution for verified actions',
         '  - acceptEdits: Auto-accept file modifications',
-        '  - bypassPermissions: Bypass confirmation prompts',
         '  - dontAsk: Deny unconfirmed sensitive operations silently',
-        'Usage: /mode <mode_name>',
+        'Usage: /mode <mode_name> or /bypass',
       ].join('\n');
     }
 
     st.permissionMode = targetMode;
+    if (targetMode === 'bypassPermissions') {
+      return '🔓 Switched permission mode to: bypassPermissions (All permissions granted, no prompts).';
+    }
     return `Switched permission mode to: ${targetMode}`;
   }
+};
+
+export const bypassCommand: LocalCommand = {
+  name: 'bypass',
+  description: 'Toggle or grant all agent permissions without confirmation prompts (/bypass [on|off])',
+  type: 'local',
+  aliases: ['yolo', 'all-perms', 'allperms', 'grant-all', 'allow-all'],
+  execute: (ctx) => {
+    const st = ctx.sessionState as Record<string, unknown>;
+    const arg = (ctx.args[0] || '').toLowerCase().trim();
+    const currentMode = (st.permissionMode as string) || 'default';
+
+    let nextMode: string;
+    if (arg === 'on' || arg === 'true' || arg === '1' || arg === 'yes' || arg === 'all') {
+      nextMode = 'bypassPermissions';
+    } else if (arg === 'off' || arg === 'false' || arg === '0' || arg === 'no') {
+      nextMode = 'default';
+    } else {
+      nextMode = currentMode === 'bypassPermissions' ? 'default' : 'bypassPermissions';
+    }
+
+    st.permissionMode = nextMode;
+
+    if (nextMode === 'bypassPermissions') {
+      return [
+        '🔓 [BYPASS MODE ON]: All permissions granted to agent.',
+        '  - All tools (file edits, writes, shell commands) will execute automatically without confirmation.',
+        '  - Type /bypass or /bypass off to restore standard confirmation prompts.',
+      ].join('\n');
+    }
+
+    return [
+      '🔒 [BYPASS MODE OFF]: Standard safety permissions restored.',
+      '  - Mutating and potentially destructive actions will request confirmation.',
+    ].join('\n');
+  },
 };
 
 export const planCommand: LocalCommand = {
@@ -1290,6 +1412,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(doctorCommand);
   registry.register(modelCommand);
   registry.register(modeCommand);
+  registry.register(bypassCommand);
   registry.register(planCommand);
   registry.register(turnsCommand);
   registry.register(fastCommand);
@@ -1316,5 +1439,6 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(deleteSessionCommand);
   registry.register(providersCommand);
   registry.register(setupCommand);
+  registry.register(swarmCommand);
 }
 
