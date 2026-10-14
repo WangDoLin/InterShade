@@ -27,6 +27,8 @@ export interface UnifiedMessage {
   toolCallId?: string;
   thought?: string;
   timestamp: number;
+  /** When true, this message is permanently preserved across compaction and trajectory compression */
+  isPinned?: boolean;
 }
 
 export interface ToolDefinition<TInput = Record<string, unknown>, TOutput = unknown> {

@@ -109,24 +109,31 @@ export class MultiTierCompactor {
   ): { messages: UnifiedMessage[]; report: CompactionReport } {
     const originalTokens = TokenCounter.estimateMessagesTokens(messages);
     const systemMessages = messages.filter((m) => m.role === 'system');
-    const nonSystem = messages.filter((m) => m.role === 'system');
+    const nonSystem = messages.filter((m) => m.role !== 'system');
+    const pinnedMessages = messages.filter((m) => m.isPinned);
 
-    // Extract key historical actions
+    // Extract key historical actions and user requests
     const keyActions: string[] = [];
     for (const m of nonSystem) {
+      if (m.isPinned) continue; // Pinned messages are preserved directly
       if (m.role === 'user' && m.content) {
-        keyActions.push(`User asked: "${m.content.slice(0, 100)}"`);
+        keyActions.push(`User request: "${m.content.slice(0, 180)}"`);
       } else if (m.toolResult) {
-        keyActions.push(`Executed tool: ${m.toolResult.toolName} (isError: ${m.toolResult.isError})`);
+        const status = m.toolResult.isError ? 'FAILED' : 'SUCCESS';
+        keyActions.push(`Tool ${m.toolResult.toolName} [${status}]: ${m.toolResult.content.slice(0, 120)}`);
+      } else if (m.role === 'assistant' && m.content && m.content.includes('##')) {
+        // Capture high-level design headers/decisions
+        const firstLine = m.content.split('\n')[0].slice(0, 120);
+        keyActions.push(`Agent milestone: ${firstLine}`);
       }
     }
 
     const summaryContent = [
       '# Conversation Compaction Boundary',
-      'The prior conversation has reached the context threshold and was compacted into this summary.',
+      'The prior conversation has reached the context threshold and was compacted into this structured checkpoint.',
       '',
       '## Key Interaction History:',
-      keyActions.slice(-15).map((a) => `- ${a}`).join('\n'),
+      keyActions.slice(-20).map((a) => `- ${a}`).join('\n'),
       '',
       reconstruction?.activeTasksSummary ? `## Active Task Checklist:\n${reconstruction.activeTasksSummary}\n` : '',
       reconstruction?.recentlyTouchedFiles && reconstruction.recentlyTouchedFiles.length > 0
@@ -142,9 +149,12 @@ export class MultiTierCompactor {
       timestamp: Date.now()
     };
 
-    // Keep the most recent 2 turns
+    // Keep the most recent 2 turns, plus any pinned messages that aren't already included
     const recentTurns = messages.slice(-2);
-    const merged = [...systemMessages, summaryMessage, ...recentTurns];
+    const recentIds = new Set(recentTurns.map((m) => m.id));
+    const extraPinned = pinnedMessages.filter((p) => !recentIds.has(p.id) && p.role !== 'system');
+
+    const merged = [...systemMessages, ...extraPinned, summaryMessage, ...recentTurns];
     const compactedTokens = TokenCounter.estimateMessagesTokens(merged);
 
     return {
