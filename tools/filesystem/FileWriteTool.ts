@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { createTwoFilesPatch } from 'diff';
 import { GitSafetyGuard } from '../../security/GitSafetyGuard.js';
+import { FileLockRegistry } from '../../engine/swarm/FileLockRegistry.js';
 
 export class FileWriteTool extends BaseTool<{ filePath: string; content: string; overwrite?: boolean }, string> {
   readonly name = 'file_write';
@@ -34,6 +35,13 @@ export class FileWriteTool extends BaseTool<{ filePath: string; content: string;
     if (!gitSafety.isSafe) {
       throw new Error(gitSafety.reason);
     }
+
+    // Concurrency FileLockRegistry lease and scope check
+    const leaseCheck = FileLockRegistry.acquireLease(resolvedPath, context.sessionId, 'general');
+    if (!leaseCheck.acquired) {
+      throw new Error(leaseCheck.reason || `[FILE LOCKED]: File "${args.filePath}" is locked by another active session.`);
+    }
+
     const fileExists = fs.existsSync(resolvedPath);
 
     if (fileExists && !args.overwrite) {

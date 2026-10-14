@@ -1,0 +1,156 @@
+import { EventEmitter } from 'node:events';
+import { SwarmSessionManager, type SpawnWorkerOptions } from './SwarmSessionManager.js';
+import { SwarmIntegrator } from './SwarmIntegrator.js';
+import type { SwarmRole, SwarmTask, SwarmProgressEvent, SwarmMergeResult } from './SwarmTypes.js';
+
+export interface PromptInputSpec {
+  prompt: string;
+  role?: SwarmRole;
+  scope?: string[];
+}
+
+export class SwarmCoordinator extends EventEmitter {
+  private sessionManager: SwarmSessionManager;
+
+  constructor() {
+    super();
+    this.sessionManager = new SwarmSessionManager();
+
+    // Forward progress updates from SessionManager
+    this.sessionManager.on('progress', (event: SwarmProgressEvent) => {
+      this.emit('progress', event);
+    });
+  }
+
+  getSessionManager(): SwarmSessionManager {
+    return this.sessionManager;
+  }
+
+  /**
+   * Infer appropriate Swarm role and default file scope from prompt text
+   */
+  static inferRoleAndScope(promptText: string): { role: SwarmRole; scope: string[] } {
+    const lower = promptText.toLowerCase();
+
+    if (
+      lower.includes('test') ||
+      lower.includes('spec') ||
+      lower.includes('verify') ||
+      lower.includes('kiem thu') ||
+      lower.includes('kiểm thử')
+    ) {
+      return {
+        role: 'tester',
+        scope: ['tests/**', 'test/**', '**/*.test.*', '**/*.spec.*'],
+      };
+    }
+
+    if (
+      lower.includes('ui') ||
+      lower.includes('frontend') ||
+      lower.includes('component') ||
+      lower.includes('style') ||
+      lower.includes('css') ||
+      lower.includes('react') ||
+      lower.includes('view') ||
+      lower.includes('giao diện')
+    ) {
+      return {
+        role: 'frontend',
+        scope: ['src/ui/**', 'src/components/**', 'src/views/**', 'src/styles/**', 'ui/**'],
+      };
+    }
+
+    if (
+      lower.includes('api') ||
+      lower.includes('backend') ||
+      lower.includes('service') ||
+      lower.includes('db') ||
+      lower.includes('database') ||
+      lower.includes('endpoint') ||
+      lower.includes('server') ||
+      lower.includes('route')
+    ) {
+      return {
+        role: 'backend',
+        scope: ['src/api/**', 'src/services/**', 'src/db/**', 'src/models/**', 'src/routes/**', 'services/**'],
+      };
+    }
+
+    if (
+      lower.includes('architect') ||
+      lower.includes('schema') ||
+      lower.includes('interface') ||
+      lower.includes('type') ||
+      lower.includes('thiết kế') ||
+      lower.includes('kế hoạch')
+    ) {
+      return {
+        role: 'architect',
+        scope: ['src/types/**', 'src/interfaces/**', 'types/**'],
+      };
+    }
+
+    if (lower.includes('review') || lower.includes('audit') || lower.includes('kiem tra')) {
+      return {
+        role: 'reviewer',
+        scope: ['*'],
+      };
+    }
+
+    return {
+      role: 'general',
+      scope: ['*'],
+    };
+  }
+
+  /**
+   * Dispatch multiple concurrent prompts with role assignment and worktree isolation
+   */
+  async runParallel(
+    prompts: PromptInputSpec[],
+    baseCwd: string = process.cwd(),
+    autoMerge: boolean = true
+  ): Promise<{ tasks: SwarmTask[]; mergeResult?: SwarmMergeResult }> {
+    if (prompts.length === 0) {
+      return { tasks: [] };
+    }
+
+    const workerSpecs: SpawnWorkerOptions[] = prompts.map((item) => {
+      const inferred = SwarmCoordinator.inferRoleAndScope(item.prompt);
+      const role = item.role || inferred.role;
+      const assignedScope = item.scope && item.scope.length > 0 ? item.scope : inferred.scope;
+
+      return {
+        role,
+        prompt: item.prompt,
+        assignedScope,
+        useWorktree: true,
+        baseCwd,
+      };
+    });
+
+    this.emit('swarm_start', { count: workerSpecs.length });
+
+    // Execute all tasks in parallel
+    const completedTasks = await this.sessionManager.executeBatch(workerSpecs, baseCwd);
+
+    let mergeResult: SwarmMergeResult | undefined;
+    if (autoMerge) {
+      this.emit('merge_start');
+      mergeResult = await SwarmIntegrator.mergeSwarmTasks(completedTasks, 'HEAD', baseCwd);
+      this.emit('merge_done', mergeResult);
+    }
+
+    this.emit('swarm_done', { tasks: completedTasks, mergeResult });
+    return { tasks: completedTasks, mergeResult };
+  }
+
+  /**
+   * Cancel and cleanup running swarm
+   */
+  async cancel(baseCwd: string = process.cwd()): Promise<void> {
+    await this.sessionManager.cleanup(baseCwd);
+    this.emit('swarm_cancelled');
+  }
+}

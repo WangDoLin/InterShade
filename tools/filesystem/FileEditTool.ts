@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { createTwoFilesPatch } from 'diff';
 import { GitSafetyGuard } from '../../security/GitSafetyGuard.js';
+import { FileLockRegistry } from '../../engine/swarm/FileLockRegistry.js';
 
 export interface FileEditOutput {
   success: boolean;
@@ -64,6 +65,12 @@ export class FileEditTool extends BaseTool<
 
     if (!fs.existsSync(resolvedPath)) {
       throw new Error(`[FILE NOT FOUND]: File "${args.filePath}" does not exist at "${resolvedPath}".`);
+    }
+
+    // 0. Concurrency FileLockRegistry lease and scope check
+    const leaseCheck = FileLockRegistry.acquireLease(resolvedPath, context.sessionId, 'general');
+    if (!leaseCheck.acquired) {
+      throw new Error(leaseCheck.reason || `[FILE LOCKED]: File "${args.filePath}" is locked by another active session.`);
     }
 
     const stat = fs.statSync(resolvedPath);
