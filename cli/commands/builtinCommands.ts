@@ -22,6 +22,8 @@ import { ProviderHealthChecker } from '../../providers/reliability/ProviderHealt
 import { PlanManager } from '../../state/PlanManager.js';
 import { config } from '../../config/index.js';
 import { swarmCommand } from './swarmCommand.js';
+import { McpClientManager } from '../../services/mcp/McpClientManager.js';
+import { RepoMapTool } from '../../tools/context/RepoMapTool.js';
 
 
 export const reviewCommand: PromptCommand = {
@@ -905,30 +907,114 @@ export const memoryCommand: LocalCommand = {
   name: 'memory',
   description: 'Search and inspect durable knowledge in SQLite FTS5 BM25 memory',
   type: 'local',
-  aliases: ['mem'],
+  aliases: ['mem', 'memories'],
   execute: (ctx) => {
     const query = ctx.args.join(' ').trim();
-    if (!query) {
+    const projectId = path.basename(ctx.cwd) || 'default-project';
+
+    if (!query || query.toLowerCase() === 'list' || query.toLowerCase() === 'all') {
+      const projectMemories = FtsMemoryService.getMemoriesForProject(projectId);
       const db = getDatabase();
       const countRow = db.prepare('SELECT count(*) as count FROM memories').get() as { count: number };
+
+      if (projectMemories.length === 0) {
+        return [
+          'Durable FTS5 Long-Term Memory',
+          `Total Global Records: ${countRow.count} | Current Project: 0`,
+          'No memories recorded yet for this project.',
+          'Save a new memory with: /remember [type] <title> :: <content>',
+          'Example: /remember architecture Port :: Luon dung port 3000',
+        ].join('\n');
+      }
+
+      const lines: string[] = [
+        `Durable FTS5 Long-Term Memory (${projectMemories.length} records for ${projectId}):`
+      ];
+      for (const m of projectMemories) {
+        const dateStr = new Date(m.createdAt).toLocaleDateString();
+        lines.push(`- [${m.type.toUpperCase()}] **${m.title}**: ${m.content.slice(0, 120)} (${dateStr})`);
+      }
+      lines.push('\nSearch with: /memory <query> | Add with: /remember <note>');
+      return lines.join('\n');
+    }
+
+    const results = FtsMemoryService.searchMemories(query, { projectId, limit: 10 });
+    if (results.length === 0) {
+      return `No memories found matching query: "${query}" in project ${projectId}.`;
+    }
+
+    const lines: string[] = [`FTS5 Memory BM25 matches for "${query}" (${results.length} found):`];
+    for (const res of results) {
+      lines.push(`- [${res.type.toUpperCase()}] **${res.title}**: ${res.content.slice(0, 120)} (Score: ${res.rank.toFixed(2)})`);
+    }
+    return lines.join('\n');
+  }
+};
+
+export const rememberCommand: LocalCommand = {
+  name: 'remember',
+  description: 'Persist a critical rule, decision, or lesson into long-term SQLite FTS5 memory',
+  type: 'local',
+  aliases: ['memorize', 'ghinho'],
+  execute: (ctx) => {
+    const raw = ctx.args.join(' ').trim();
+    if (!raw) {
       return [
-        'Durable FTS5 Memory',
-        `Total Indexed Records: ${countRow.count}`,
-        'Usage: /memory <search query>',
-        'Example: /memory oauth token refresh',
+        'Command: /remember',
+        'Usage: /remember [type] <title> :: <content>',
+        '   or: /remember <important note to remember>',
+        'Types: decision | lesson | architecture | bug_pattern | skill (default: lesson)',
+        'Examples:',
+        '  /remember architecture Port quy dinh :: Luon su dung port 3000 cho web server',
+        '  /remember Dung node 20 tro len cho du an nay',
       ].join('\n');
     }
 
-    const results = FtsMemoryService.searchMemories(query, { limit: 5 });
-    if (results.length === 0) {
-      return `No memories found matching query: "${query}"`;
+    const projectId = path.basename(ctx.cwd) || 'default-project';
+    let type: 'decision' | 'lesson' | 'architecture' | 'bug_pattern' | 'skill' = 'lesson';
+    let title = '';
+    let content = '';
+
+    const validTypes = ['decision', 'lesson', 'architecture', 'bug_pattern', 'skill'];
+
+    if (raw.includes('::')) {
+      const [header, body] = raw.split('::', 2);
+      content = body.trim();
+      const parts = header.trim().split(/\s+/);
+      if (validTypes.includes(parts[0].toLowerCase())) {
+        type = parts[0].toLowerCase() as any;
+        title = parts.slice(1).join(' ').trim() || `${type} note`;
+      } else {
+        title = header.trim();
+      }
+    } else {
+      const parts = raw.split(/\s+/);
+      if (validTypes.includes(parts[0].toLowerCase()) && parts.length > 2) {
+        type = parts[0].toLowerCase() as any;
+        title = parts.slice(1, 4).join(' ');
+        content = parts.slice(1).join(' ');
+      } else {
+        title = raw.slice(0, 50);
+        content = raw;
+      }
     }
 
-    const lines: string[] = [`FTS5 Memory matches for "${query}":`];
-    for (const res of results) {
-      lines.push(`- [${res.type}] ${res.content.slice(0, 100)}... (Rank: ${res.rank.toFixed(2)})`);
-    }
-    return lines.join('\n');
+    const rec = FtsMemoryService.recordMemory({
+      projectId,
+      sessionId: (ctx.sessionState?.id as string) || undefined,
+      type,
+      title: title || 'Project Guideline',
+      content,
+    });
+
+    return [
+      `[Successfully Recorded to Long-Term Memory]`,
+      `- ID: ${rec.id}`,
+      `- Type: [${rec.type.toUpperCase()}]`,
+      `- Title: "${rec.title}"`,
+      `- Project: ${projectId}`,
+      `This memory is indexed with SQLite FTS5 BM25 and will automatically be provided to the model in future turns.`
+    ].join('\n');
   }
 };
 
@@ -1400,7 +1486,51 @@ export const verifyProofCommand: LocalCommand = {
   }
 };
 
+export const mcpCommand: LocalCommand = {
+  name: 'mcp',
+  description: 'Inspect Model Context Protocol (MCP) servers and active external tools',
+  type: 'local',
+  aliases: ['mcps'],
+  execute: (ctx) => {
+    const configPath = McpClientManager.findConfigFile(ctx.cwd);
+    const connected = McpClientManager.getConnectedServers();
 
+    if (!configPath) {
+      return [
+        'Model Context Protocol (MCP) Ecosystem',
+        'Status: No MCP configuration file detected.',
+        'To connect external servers (Postgres, GitHub, SQLite, Sentry):',
+        '  Create .intershader/mcp.json or .mcp.json with:',
+        '  {',
+        '    "mcpServers": {',
+        '      "github": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] }',
+        '    }',
+        '  }'
+      ].join('\n');
+    }
+
+    return [
+      'Model Context Protocol (MCP) Runtime',
+      `Config Path:       ${configPath}`,
+      `Active Servers:    ${connected.length > 0 ? connected.join(', ') : 'None running or awaiting connection'}`,
+      'Servers provide dynamic domain tools to the agent seamlessly.'
+    ].join('\n');
+  }
+};
+
+export const repoMapCommand: LocalCommand = {
+  name: 'repomap',
+  description: 'Display an AST structural symbol architecture map of the codebase',
+  type: 'local',
+  aliases: ['map', 'symbols'],
+  execute: async (ctx) => {
+    const tool = new RepoMapTool();
+    return await tool.execute(
+      { subDir: ctx.args[0] },
+      { sessionId: (ctx.sessionState?.id as string) || 'cli', cwd: ctx.cwd, permissionMode: 'bypassPermissions' }
+    );
+  }
+};
 
 export function registerBuiltinCommands(registry: CommandRegistry): void {
   // Claude Code core commands
@@ -1431,6 +1561,9 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 
   // Intelligence, Sandboxing & Session Management commands
   registry.register(memoryCommand);
+  registry.register(rememberCommand);
+  registry.register(mcpCommand);
+  registry.register(repoMapCommand);
   registry.register(skillsCommand);
   registry.register(worktreeCommand);
   registry.register(gatewayCommand);
