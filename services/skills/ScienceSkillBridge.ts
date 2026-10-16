@@ -1,6 +1,7 @@
 import { execSync, spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 
 export interface ScienceScriptExecutionOptions {
   cwd?: string;
@@ -24,6 +25,17 @@ export interface ScienceScriptExecutionResult {
  */
 export class ScienceSkillBridge {
   private static cachedUvPath: string | null = null;
+
+  /**
+   * Resolve absolute path to scripts folder for an installed science skill.
+   */
+  static getSkillScriptsDir(skillName: string): string {
+    const skillDir = path.join(os.homedir(), '.gemini', 'config', 'plugins', 'science', 'skills', skillName, 'scripts');
+    if (fs.existsSync(skillDir)) {
+      return skillDir;
+    }
+    return '';
+  }
 
   /**
    * Check whether `uv` package manager is installed and accessible.
