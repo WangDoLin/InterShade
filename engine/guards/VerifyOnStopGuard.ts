@@ -118,8 +118,8 @@ export class VerifyOnStopGuard {
 
     const codeFiles = this.filterCodeFiles(modifiedFiles);
 
-    // If no code files were modified, verification is not required.
-    if (codeFiles.length === 0) {
+    // If no code files were modified or no modification timestamp recorded, verification is not required.
+    if (lastModificationTimestamp === 0 || codeFiles.length === 0) {
       return {
         shouldBlock: false,
         unverifiedFiles: [],
@@ -171,6 +171,5 @@ Under the "NO EVIDENCE, NO DONE" policy, please run an appropriate verification 
    */
   reset(): void {
     this.nudgeCount = 0;
-    this.verifiedAtTimestamp = 0;
   }
 }

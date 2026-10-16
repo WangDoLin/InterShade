@@ -119,6 +119,8 @@ export class QueryEngine extends EventEmitter {
   private contextMicroCompactor = new ContextMicroCompactor();
   private skillRegistry: SkillRegistry;
   private activeSkillName: string | null = null;
+  private turnModifiedFiles = new Set<string>();
+  private turnLastModTimestamp = 0;
 
   constructor(sessionConfig: SessionConfig) {
     super();
@@ -520,7 +522,18 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       return false;
     }
     const p = prompt.trim().toLowerCase();
-    if (p.startsWith('/plan')) {
+    // Guard against synthetic prompts, plan commands, and roadmap/planning requests
+    if (
+      p.startsWith('/plan') ||
+      p.startsWith('[') ||
+      p.includes('[autonomous continuation]') ||
+      p.includes('[system notice]') ||
+      p.includes('[verify-on-stop') ||
+      p.includes('[proof mode') ||
+      p.includes('plan roadmap') ||
+      p.includes('lập kế hoạch') ||
+      p.includes('lộ trình')
+    ) {
       return false;
     }
     const executionKeywords = [
@@ -1060,14 +1073,20 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
       this.refreshSystemPrompt(effectivePrompt);
       this.verifyOnStopGuard.reset();
       this.repetitionGuard.reset();
+      this.turnModifiedFiles.clear();
+      this.turnLastModTimestamp = 0;
 
       const isSurgicalTask = QueryEngine.isSurgicalFixOrTargetedPrompt(effectivePrompt);
       if (isSurgicalTask) {
         this.isExplorationPhase = false;
       }
 
-      // Auto-transition out of Plan Mode when an explicit coding/execution directive is given
-      if (this.sessionConfig.permissionMode === 'plan' && QueryEngine.isExecutionDirective(effectivePrompt)) {
+      // Auto-transition out of Plan Mode when an explicit human coding/execution directive is given
+      if (
+        this.sessionConfig.permissionMode === 'plan' &&
+        !effectivePrompt.trim().startsWith('[') &&
+        QueryEngine.isExecutionDirective(effectivePrompt)
+      ) {
         this.setPermissionMode('default');
         this.emit(
           'verification',
@@ -1277,9 +1296,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             finishReason: turnFinishReason,
             pendingToolCallsCount: pendingToolCalls.length,
             lastToolTurnHadError,
-            modifiedFilesCount: this.evidenceCollector.getModifiedFiles().length,
+            modifiedFilesCount: this.turnModifiedFiles.size,
             isProofModeActive: !!this.sessionConfig.proofMode,
             isPlanModeActive: this.sessionConfig.permissionMode === 'plan',
+            permissionMode: this.sessionConfig.permissionMode,
             recentMessages: this.messages,
           });
 
@@ -1298,26 +1318,31 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             continue; // Self-healing continuation loop
           }
 
-          const modifiedFiles = this.evidenceCollector.getModifiedFiles();
-
-          // Verify-On-Stop Guard: Check if code files were modified without fresh verification
-          const verifyDecision = this.verifyOnStopGuard.evaluate(modifiedFiles);
-          if (verifyDecision.shouldBlock && verifyDecision.nudgePrompt) {
-            this.emit(
-              'verification',
-              `[Verify-On-Stop Guard]: ${verifyDecision.unverifiedFiles.length} modified code file(s) require automated verification. Nudging agent...`
+          // Verify-On-Stop Guard: Check if code files were modified in THIS turn without fresh verification (NEVER in Plan Mode)
+          if (this.sessionConfig.permissionMode !== 'plan' && this.turnModifiedFiles.size > 0) {
+            const verifyDecision = this.verifyOnStopGuard.evaluate(
+              Array.from(this.turnModifiedFiles),
+              this.turnLastModTimestamp
             );
-            const autoVerifyMsg: UnifiedMessage = {
-              id: randomUUID(),
-              role: 'user',
-              content: verifyDecision.nudgePrompt,
-              timestamp: Date.now(),
-            };
-            this.messages.push(autoVerifyMsg);
-            continue; // Autonomous verification nudge
+            if (verifyDecision.shouldBlock && verifyDecision.nudgePrompt) {
+              this.emit(
+                'verification',
+                `[Verify-On-Stop Guard]: ${verifyDecision.unverifiedFiles.length} modified code file(s) require automated verification. Nudging agent...`
+              );
+              const autoVerifyMsg: UnifiedMessage = {
+                id: randomUUID(),
+                role: 'user',
+                content: verifyDecision.nudgePrompt,
+                timestamp: Date.now(),
+              };
+              this.messages.push(autoVerifyMsg);
+              continue; // Autonomous verification nudge
+            }
           }
 
-          const shouldVerifyTypecheck = modifiedFiles.length > 0 || this.sessionConfig.proofMode;
+          const shouldVerifyTypecheck =
+            (this.turnModifiedFiles.size > 0 && this.sessionConfig.permissionMode !== 'plan') ||
+            this.sessionConfig.proofMode;
 
           if (shouldVerifyTypecheck) {
             const typecheck = VerificationGate.verifyTypeScript(this.sessionConfig.cwd);
@@ -1434,6 +1459,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             const targetPath = (args?.path || args?.filePath) as string | undefined;
             if (targetPath) {
               this.evidenceCollector.recordFileModification(targetPath);
+              this.turnModifiedFiles.add(targetPath);
+              this.turnLastModTimestamp = Date.now();
             }
           } else if (!dr.isError && dr.toolCall.name === 'run_shell_command') {
             const args = dr.toolCall.arguments as Record<string, unknown> | undefined;

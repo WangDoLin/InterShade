@@ -215,10 +215,12 @@ console.log('\n[Test 4] PlanManager: extractPlanFromText auto-parsing');
 console.log('\n[Test 5] PlanModeTool: Tool lifecycle execution');
 {
   const tool = new PlanModeTool();
+  let confirmationResult = false;
   const mockContext: ToolExecutionContext = {
     sessionId: `test-tool-${randomUUID()}`,
     cwd: process.cwd(),
     permissionMode: 'default',
+    askConfirmation: async () => confirmationResult,
   };
 
   // 1. Enter Plan Mode
@@ -258,7 +260,14 @@ console.log('\n[Test 5] PlanModeTool: Tool lifecycle execution');
   const viewRes = await tool.execute({ action: 'view' }, mockContext);
   assert.ok(viewRes.includes('# Architecture Plan: Microservice Refactor (v2)'));
 
-  // 5. Exit Plan Mode
+  // 5a. Exit Plan Mode without approval -> Must remain in Plan Mode
+  confirmationResult = false;
+  const declineRes = await tool.execute({ action: 'exit' }, mockContext);
+  assert.strictEqual(mockContext.permissionMode, 'plan');
+  assert.ok(declineRes.includes('[PLAN MODE REMAIN ACTIVE]'));
+
+  // 5b. Exit Plan Mode with user approval -> Transitions to default Execution Mode
+  confirmationResult = true;
   const exitRes = await tool.execute({ action: 'exit' }, mockContext);
   assert.strictEqual(mockContext.permissionMode, 'default');
   assert.ok(exitRes.includes('[PLAN MODE OFF]'));

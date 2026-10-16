@@ -124,6 +124,25 @@ export class PlanModeTool extends BaseTool<PlanModeInput, string> {
       }
 
       case 'exit': {
+        if (context.permissionMode === 'plan') {
+          if (context.askConfirmation) {
+            const planTitle = args.planTitle || PlanManager.getActivePlan(sessionId)?.title || 'Plan Execution';
+            const approved = await context.askConfirmation(
+              `AI proposes to exit Plan Mode and start executing plan "${planTitle}". Do you approve transitioning to Execution Mode?`,
+              {
+                toolName: 'plan_mode',
+                args: { action: 'exit', planTitle },
+                reason: 'Transitioning from read-only Plan Mode to Execution Mode to modify files and execute commands.',
+              }
+            );
+            if (!approved) {
+              return '[PLAN MODE REMAIN ACTIVE]: Transition to Execution Mode was declined by the user. You must remain in Plan Mode (read-only safe mode). Do not call mutating tools or run modifying shell commands.';
+            }
+          } else {
+            return '[PLAN MODE REMAIN ACTIVE]: Agent cannot unilaterally exit Plan Mode without explicit user confirmation. Please remain in Plan Mode or ask the user to toggle plan mode via /plan.';
+          }
+        }
+
         context.permissionMode = 'default';
         let plan = PlanManager.getActivePlan(sessionId);
         if (args.planSteps && args.planSteps.length > 0) {

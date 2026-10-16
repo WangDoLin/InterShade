@@ -2,12 +2,11 @@ import type { UnifiedMessage } from '../../types/index.js';
 
 export type ContinuationReason =
   | 'FORWARD_INTENT'
-  | 'TRUNCATED_MAX_TOKENS'
-  | 'INCOMPLETE_TOOL_ERROR_RECOVERY'
-  | 'UNVERIFIED_CHANGES'
-  | 'EMPTY_RESPONSE_RETRY'
   | 'UNEXECUTED_CODE_BLOCK'
   | 'INCOMPLETE_PLAN_STEPS'
+  | 'TRUNCATED_MAX_TOKENS'
+  | 'INCOMPLETE_TOOL_ERROR_RECOVERY'
+  | 'EMPTY_RESPONSE_RETRY'
   | 'NONE';
 
 export interface ContinuationEvaluationParams {
@@ -18,6 +17,7 @@ export interface ContinuationEvaluationParams {
   modifiedFilesCount: number;
   isProofModeActive: boolean;
   isPlanModeActive?: boolean;
+  permissionMode?: string;
   recentMessages?: UnifiedMessage[];
 }
 
@@ -35,19 +35,13 @@ const ACTION_VERBS_VI =
 const ACTION_VERBS_EN =
   'inspect|read|edit|write|create|modify|run|check|test|investigate|look at|examine|update|execute|implement|verify|fix|build|continue|handle|process|proceed|do|solve|resolve|configure|setup|apply';
 
+// Strict 1st-person declarations only (e.g. "tôi sẽ...", "để tôi..."). Never match loose words like "cần" or "bạn cần".
 const INTENT_PATTERNS_VI: RegExp[] = [
-  new RegExp(`(?:tôi sẽ|bây giờ tôi sẽ|tiếp theo(?:,| tôi sẽ)?|chuẩn bị|đang|sau đây tôi sẽ|dưới đây tôi sẽ)\\s+(?:${ACTION_VERBS_VI})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`(?:để tôi|hãy để tôi|cần|hãy cùng|chúng ta sẽ)\\s+(?:${ACTION_VERBS_VI})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`(?:bước tiếp theo|tiến hành|bắt tay vào|bắt đầu)\\s+(?:${ACTION_VERBS_VI})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`(?:kế hoạch|các bước|quy trình|giải pháp)(?:\\s+là|\\s+như sau)?:?\\s*(?:bước 1|step 1|1\\.)\\s*[^.!?\\n]{0,80}`, 'i'),
+  new RegExp(`\\b(?:tôi sẽ|bây giờ tôi sẽ|sau đây tôi sẽ|để tôi|hãy để tôi)\\s+(?:${ACTION_VERBS_VI})\\b[^.!?\\n]{0,80}`, 'i'),
 ];
 
 const INTENT_PATTERNS_EN: RegExp[] = [
-  new RegExp(`\\b(?:I will|I'll|now I will|we will|next I will)\\s+(?:now\\s+)?(?:${ACTION_VERBS_EN})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`\\b(?:let me|allow me to|going to|about to)\\s+(?:${ACTION_VERBS_EN})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`\\b(?:next,?\\s+(?:I will|let's|I am going to|I'll|step is to))\\s+(?:${ACTION_VERBS_EN})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`\\b(?:proceeding to|I am going to|starting to|moving on to)\\s+(?:${ACTION_VERBS_EN})\\b[^.!?\\n]{0,80}`, 'i'),
-  new RegExp(`\\b(?:step 1:|1\\.\\s+(?:first,?|inspect|check|read|edit|create|run|modify))\\b[^.!?\\n]{0,80}`, 'i'),
+  new RegExp(`\\b(?:I will|I'll|now I will|next I will|let me|allow me to)\\s+(?:now\\s+)?(?:${ACTION_VERBS_EN})\\b[^.!?\\n]{0,80}`, 'i'),
 ];
 
 const COMPLETION_PATTERNS: RegExp[] = [
@@ -57,15 +51,15 @@ const COMPLETION_PATTERNS: RegExp[] = [
 ];
 
 /**
- * AutonomousContinuationGuard prevents the agent from unexpectedly halting
- * mid-task when forward action intent was declared, when code blocks were emitted without tools,
- * when multi-step plans were left unexecuted, or when output was truncated.
+ * AutonomousContinuationGuard ensures resilience for truncated tokens or empty model responses.
+ * Strictly respects Plan Mode, User Confirmation, and Interactive Default Mode boundaries.
+ * Prevents the agent from automatically exceeding authority or overriding the user.
  */
 export class AutonomousContinuationGuard {
   private consecutiveNudges = 0;
   private readonly maxConsecutiveNudges: number;
 
-  constructor(maxConsecutiveNudges: number = 4) {
+  constructor(maxConsecutiveNudges: number = 2) {
     this.maxConsecutiveNudges = maxConsecutiveNudges;
   }
 
@@ -96,36 +90,38 @@ export class AutonomousContinuationGuard {
       return { shouldContinue: false, reason: 'NONE', consecutiveNudges: this.consecutiveNudges };
     }
 
-    // 1. Handle max_tokens or dangling unclosed syntax truncation
+    // 1. Handle max_tokens or dangling unclosed syntax truncation (Always safe to recover text)
     if (params.finishReason === 'max_tokens' || this.isTextTruncated(params.assistantContent)) {
       return this.handleTruncation();
     }
 
-    // 2. Handle empty response
+    // 2. Handle empty response (Always safe to retry once)
     if (!params.assistantContent || params.assistantContent.trim().length === 0) {
       return this.handleEmptyResponse();
     }
 
-    // 3. Skip continuation if assistant explicitly completed task
+    // 3. Plan Mode Protection: When in Plan Mode, the agent is strictly in safe read-only mode.
+    // NEVER force tool execution or autonomous actions. The agent must present the plan and wait for user.
+    if (params.isPlanModeActive) {
+      return { shouldContinue: false, reason: 'NONE', consecutiveNudges: this.consecutiveNudges };
+    }
+
+    // 4. User Question / Confirmation Protection:
+    // If the assistant ended with a question, asked for confirmation, or is waiting for user input,
+    // MUST NOT continue autonomously! Yield immediately to the human user.
+    if (this.isWaitingForUser(params.assistantContent)) {
+      return { shouldContinue: false, reason: 'NONE', consecutiveNudges: this.consecutiveNudges };
+    }
+
+    // 5. Skip continuation if assistant explicitly marked completion
     if (this.isExplicitlyComplete(params.assistantContent)) {
       return { shouldContinue: false, reason: 'NONE', consecutiveNudges: this.consecutiveNudges };
     }
 
-    // 4. Handle forward action intent without tool execution
+    // 6. Handle forward action intent without tool execution
     const intentMatch = this.detectForwardIntent(params.assistantContent);
     if (intentMatch) {
       return this.handleForwardIntent(intentMatch);
-    }
-
-    // 5. Handle unexecuted code block (Assistant emitted markdown code block instead of calling tool)
-    const codeFileHint = this.detectUnexecutedCodeBlock(params.assistantContent);
-    if (!params.isPlanModeActive && codeFileHint) {
-      return this.handleUnexecutedCodeBlock(codeFileHint);
-    }
-
-    // 6. Handle unfinished multi-step plan
-    if (this.detectUnfinishedPlan(params.assistantContent, params.isPlanModeActive)) {
-      return this.handleUnfinishedPlan(params.isPlanModeActive);
     }
 
     // 7. Handle unaddressed tool error in previous turn
@@ -133,9 +129,15 @@ export class AutonomousContinuationGuard {
       return this.handleToolErrorRecovery();
     }
 
-    // 8. Handle modified files without explicit completion
-    if (params.modifiedFilesCount > 0 && !params.isProofModeActive && this.hasPendingCodeWork(params.assistantContent)) {
-      return this.handlePendingCodeWork();
+    // 8. Detect unexecuted code block in markdown when expected to apply
+    const codeBlockFile = this.detectUnexecutedCodeBlock(params.assistantContent);
+    if (codeBlockFile) {
+      return this.handleUnexecutedCodeBlock(codeBlockFile);
+    }
+
+    // 9. Detect incomplete plan steps formulated in text without execution
+    if (this.detectUnfinishedPlan(params.assistantContent, params.isPlanModeActive)) {
+      return this.handleUnfinishedPlan(params.isPlanModeActive);
     }
 
     return { shouldContinue: false, reason: 'NONE', consecutiveNudges: this.consecutiveNudges };
@@ -148,7 +150,7 @@ export class AutonomousContinuationGuard {
       reason: 'TRUNCATED_MAX_TOKENS',
       consecutiveNudges: this.consecutiveNudges,
       nudgePrompt:
-        '[AUTONOMOUS CONTINUATION]: Your previous response reached the token limit and was truncated. Please resume your work directly from where you stopped and invoke the required tool call.',
+        '[AUTONOMOUS CONTINUATION]: Your previous response reached the token limit. Please resume your response directly from where you stopped.',
     };
   }
 
@@ -159,7 +161,7 @@ export class AutonomousContinuationGuard {
       reason: 'EMPTY_RESPONSE_RETRY',
       consecutiveNudges: this.consecutiveNudges,
       nudgePrompt:
-        '[AUTONOMOUS CONTINUATION]: The provider returned an empty response. Please proceed with your reasoning and tool execution without stopping.',
+        '[AUTONOMOUS CONTINUATION]: The provider returned an empty response. Please formulate your response to the user.',
     };
   }
 
@@ -170,32 +172,7 @@ export class AutonomousContinuationGuard {
       reason: 'FORWARD_INTENT',
       intentSnippet: snippet,
       consecutiveNudges: this.consecutiveNudges,
-      nudgePrompt: `[AUTONOMOUS CONTINUATION]: You declared intent to take action ("${snippet}"), but no tool call was executed. Do not stop or ask for confirmation; please proceed directly by invoking the appropriate tool now to continue the task.`,
-    };
-  }
-
-  private handleUnexecutedCodeBlock(fileHint?: string): ContinuationDecision {
-    this.consecutiveNudges++;
-    const targetFileSnippet = fileHint && fileHint !== 'the target file' ? ` for ${fileHint}` : '';
-    return {
-      shouldContinue: true,
-      reason: 'UNEXECUTED_CODE_BLOCK',
-      consecutiveNudges: this.consecutiveNudges,
-      nudgePrompt: `[AUTONOMOUS CONTINUATION]: You provided a code implementation in markdown${targetFileSnippet}, but did not invoke any file modification tool. Do not simply print code blocks in text. Please immediately invoke file_edit or file_write to apply this code directly to the workspace.`,
-    };
-  }
-
-  private handleUnfinishedPlan(isPlanMode?: boolean): ContinuationDecision {
-    this.consecutiveNudges++;
-    const nudgePrompt = isPlanMode
-      ? '[AUTONOMOUS CONTINUATION]: You have formulated a plan. Please use the plan_mode tool (action="create" or action="update") to persist this plan into session memory and present the final plan.'
-      : '[AUTONOMOUS CONTINUATION]: You formulated an implementation plan with ordered steps. Please proceed directly to execute Step 1 by invoking the required tool (such as file_read, grep_search, or file_edit). Do not halt.';
-
-    return {
-      shouldContinue: true,
-      reason: 'INCOMPLETE_PLAN_STEPS',
-      consecutiveNudges: this.consecutiveNudges,
-      nudgePrompt,
+      nudgePrompt: `[AUTONOMOUS CONTINUATION]: You declared intent to take action ("${snippet}"). Please invoke the required tool to proceed, or present your findings to the user.`,
     };
   }
 
@@ -210,25 +187,130 @@ export class AutonomousContinuationGuard {
     };
   }
 
-  private handlePendingCodeWork(): ContinuationDecision {
+  private handleUnexecutedCodeBlock(fileHint?: string): ContinuationDecision {
     this.consecutiveNudges++;
+    const targetFileSnippet = fileHint && fileHint !== 'the target file' ? ` for ${fileHint}` : '';
     return {
       shouldContinue: true,
-      reason: 'UNVERIFIED_CHANGES',
+      reason: 'UNEXECUTED_CODE_BLOCK',
       consecutiveNudges: this.consecutiveNudges,
-      nudgePrompt:
-        '[AUTONOMOUS CONTINUATION]: Files have been modified in this session, but verification has not concluded. Please run the appropriate test or inspection command to ensure everything works before ending.',
+      nudgePrompt: `[AUTONOMOUS CONTINUATION]: You provided a code implementation in markdown${targetFileSnippet}, but did not invoke any file modification tool. Do not simply print code blocks in text. Please invoke file_edit or file_write if this should be applied to the workspace.`,
     };
   }
 
+  private handleUnfinishedPlan(isPlanMode?: boolean): ContinuationDecision {
+    this.consecutiveNudges++;
+    const nudgePrompt = isPlanMode
+      ? '[AUTONOMOUS CONTINUATION]: You have formulated a plan. Please use the plan_mode tool (action="create" or action="update") to persist this plan into session memory and present the final plan.'
+      : '[AUTONOMOUS CONTINUATION]: You formulated an implementation plan with ordered steps. Please proceed directly to execute Step 1 by invoking the required tool (such as file_read, grep_search, or file_edit), or confirm with the user.';
+
+    return {
+      shouldContinue: true,
+      reason: 'INCOMPLETE_PLAN_STEPS',
+      consecutiveNudges: this.consecutiveNudges,
+      nudgePrompt,
+    };
+  }
+
+  private isWaitingForUser(content?: string): boolean {
+    if (!content) return false;
+    const trimmed = content.trim();
+
+    // Check trailing question mark
+    if (trimmed.endsWith('?') || trimmed.endsWith('?\n') || trimmed.endsWith('?**') || trimmed.endsWith('?*')) {
+      return true;
+    }
+
+    const lower = trimmed.toLowerCase();
+    const questionMarkersVi = [
+      'không?',
+      'chưa?',
+      'được không?',
+      'như thế nào?',
+      'bạn nghĩ sao?',
+      'bạn có muốn',
+      'bạn muốn',
+      'vui lòng xác nhận',
+      'hãy cho tôi biết',
+      'nếu bạn đồng ý',
+      'bạn có đồng ý',
+      'hãy xác nhận',
+      'xin ý kiến',
+      'có cần điều chỉnh',
+      'bạn có cần',
+      'bạn muốn bắt đầu',
+      'bạn chọn phương án',
+      'lựa chọn nào',
+    ];
+
+    const questionMarkersEn = [
+      'would you like',
+      'do you want',
+      'please confirm',
+      'let me know',
+      'what do you think',
+      'shall we proceed',
+      'should i proceed',
+      'are you ready',
+      'if you agree',
+      'please let me know',
+      'which option',
+    ];
+
+    return [...questionMarkersVi, ...questionMarkersEn].some((marker) => lower.includes(marker));
+  }
+
   private detectForwardIntent(content: string): string | null {
+    if (this.isWaitingForUser(content)) return null;
+
     for (const pat of [...INTENT_PATTERNS_VI, ...INTENT_PATTERNS_EN]) {
       const match = content.match(pat);
       if (match && match[0]) {
+        // Disqualify if preceded by words indicating suggestion to user or condition
+        const matchedIndex = match.index || 0;
+        const prefix = content.slice(Math.max(0, matchedIndex - 30), matchedIndex).toLowerCase();
+        if (prefix.includes('bạn') || prefix.includes('nếu') || prefix.includes('hoặc') || prefix.includes('chỉ cần')) {
+          continue;
+        }
         return match[0].trim();
       }
     }
     return null;
+  }
+
+  private detectUnexecutedCodeBlock(content?: string): string | null {
+    if (!content || this.isWaitingForUser(content)) return null;
+
+    // Detect fenced code block with minimum content
+    const codeBlockRegex = /```(?:[a-zA-Z0-9_-]*)\r?\n([\s\S]{20,}?)\r?\n```/;
+    const match = content.match(codeBlockRegex);
+    if (!match) return null;
+
+    // Try to extract mentioned file path if present (e.g., "in file src/App.tsx", "file: index.ts")
+    const fileHintRegex = /(?:file|trong file|tệp|đường dẫn|path)[:\s]+`?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)`?/i;
+    const fileMatch = content.match(fileHintRegex);
+    return fileMatch ? fileMatch[1] : 'the target file';
+  }
+
+  private detectUnfinishedPlan(content?: string, isPlanMode?: boolean): boolean {
+    if (!content || this.isWaitingForUser(content)) return false;
+    // In plan mode, do NOT nudge execution of steps
+    if (isPlanMode) return false;
+
+    const lower = content.toLowerCase();
+
+    const hasPlanHeader =
+      lower.includes('kế hoạch') ||
+      lower.includes('implementation plan') ||
+      lower.includes('action plan') ||
+      lower.includes('các bước thực hiện') ||
+      lower.includes('steps to');
+
+    const hasSteps =
+      /(?:bước 1|step 1|1\.\s+)/i.test(content) &&
+      /(?:bước 2|step 2|2\.\s+)/i.test(content);
+
+    return !!(hasPlanHeader || hasSteps);
   }
 
   private isTextTruncated(content?: string): boolean {
@@ -247,72 +329,8 @@ export class AutonomousContinuationGuard {
     return trailingDanglingPattern.test(trimmed);
   }
 
-  private detectUnexecutedCodeBlock(content?: string): string | null {
-    if (!content) return null;
-
-    // Detect fenced code block with minimum content
-    const codeBlockRegex = /```(?:[a-zA-Z0-9_-]*)\r?\n([\s\S]{20,}?)\r?\n```/;
-    const match = content.match(codeBlockRegex);
-    if (!match) return null;
-
-    // Try to extract mentioned file path if present (e.g., "in file src/App.tsx", "file: index.ts")
-    const fileHintRegex = /(?:file|trong file|tệp|đường dẫn|path)[:\s]+`?([a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+)`?/i;
-    const fileMatch = content.match(fileHintRegex);
-    return fileMatch ? fileMatch[1] : 'the target file';
-  }
-
-  private detectUnfinishedPlan(content?: string, isPlanMode?: boolean): boolean {
-    if (!content) return false;
-    const lower = content.toLowerCase();
-
-    const hasPlanHeader =
-      lower.includes('kế hoạch') ||
-      lower.includes('implementation plan') ||
-      lower.includes('action plan') ||
-      lower.includes('các bước thực hiện') ||
-      lower.includes('steps to');
-
-    const hasSteps =
-      /(?:bước 1|step 1|1\.\s+)/i.test(content) &&
-      /(?:bước 2|step 2|2\.\s+)/i.test(content);
-
-    if (hasPlanHeader || hasSteps) {
-      if (isPlanMode) {
-        return !lower.includes('plan_mode') && !lower.includes('đã lưu kế hoạch');
-      }
-      return true;
-    }
-
-    return false;
-  }
-
   private isExplicitlyComplete(content: string): boolean {
     const trimmed = content.trim();
     return COMPLETION_PATTERNS.some((pat) => pat.test(trimmed));
   }
-
-  private hasPendingCodeWork(content: string): boolean {
-    const lower = content.toLowerCase();
-    const pendingKeywords = [
-      'chưa chạy test',
-      'cần kiểm tra lại',
-      'need to test',
-      'will test',
-      'tiếp tục',
-      'bước tiếp theo',
-      'bước 2',
-      'bước 3',
-      'file tiếp theo',
-      'sẽ cập nhật',
-      'next step',
-      'next file',
-      'now modify',
-      'now update',
-      'proceed to',
-      'remaining steps',
-      'các bước còn lại',
-    ];
-    return pendingKeywords.some((kw) => lower.includes(kw));
-  }
 }
-
