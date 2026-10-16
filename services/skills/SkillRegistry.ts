@@ -279,6 +279,24 @@ export class SkillRegistry {
   }
 
   /**
+   * Get ultra-compact catalog for system prompt injection.
+   * Enforces Hermes Agent authoring standard: description <= 60 characters.
+   */
+  getCompactCatalog(): SkillSummary[] {
+    const catalog = this.getSkillCatalog();
+    return catalog.map((s) => {
+      let desc = (s.description || '').trim().replace(/\s+/g, ' ');
+      if (desc.length > 60) {
+        desc = desc.slice(0, 57).trim() + '...';
+      }
+      return {
+        ...s,
+        description: desc,
+      };
+    });
+  }
+
+  /**
    * Get full skill package by name
    */
   getSkill(name: string): SkillPackage | undefined {

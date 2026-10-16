@@ -22,6 +22,7 @@ import { BatchExecuteTool } from './execution/BatchExecuteTool.js';
 import { GitCommitTool } from './execution/GitCommitTool.js';
 import { RepoMapTool } from './context/RepoMapTool.js';
 import { CodeReviewSentinelTool } from './code/CodeReviewSentinelTool.js';
+import { ScheduleTaskTool } from './agentic/ScheduleTaskTool.js';
 
 import { WebFetchTool } from './web/WebFetchTool.js';
 import {
@@ -62,6 +63,7 @@ export class ToolRegistry {
     this.register(new AskUserTool());
     this.register(new PlanModeTool());
     this.register(new TaskTool());
+    this.register(new ScheduleTaskTool());
     this.register(new ToolSearchTool(this));
     this.register(new MemorySearchTool());
     this.register(new MemoryRecordTool());
