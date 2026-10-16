@@ -163,6 +163,22 @@ export class TaskManager {
     return true;
   }
 
+  static clearCompletedTasks(sessionId: string): number {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM tasks WHERE session_id = ? AND status = "completed"');
+    const res = stmt.run(sessionId);
+    taskEvents.emit('change', sessionId);
+    return res.changes;
+  }
+
+  static clearAllTasks(sessionId: string): number {
+    const db = getDatabase();
+    const stmt = db.prepare('DELETE FROM tasks WHERE session_id = ?');
+    const res = stmt.run(sessionId);
+    taskEvents.emit('change', sessionId);
+    return res.changes;
+  }
+
   private static rowToTask(row: any): TaskItem {
     return {
       id: row.id,

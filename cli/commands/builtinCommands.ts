@@ -1616,7 +1616,7 @@ export const repoMapCommand: LocalCommand = {
 
 export const tasksCommand: LocalCommand = {
   name: 'tasks',
-  description: 'Display active task checklist and execution progress',
+  description: 'Display active task checklist, execution progress, or clear tasks (/tasks [clear|reset])',
   type: 'local',
   aliases: ['todos', 'todo'],
   execute: (ctx) => {
@@ -1624,6 +1624,13 @@ export const tasksCommand: LocalCommand = {
     if (!sessionId) {
       return 'No active session found.';
     }
+
+    const sub = ctx.args[0]?.toLowerCase();
+    if (sub === 'clear' || sub === 'reset') {
+      const cleared = TaskManager.clearAllTasks(sessionId);
+      return `[TASKS]: Cleared ${cleared} task(s) from session checklist.`;
+    }
+
     const tasks = TaskManager.listTasks(sessionId);
     if (tasks.length === 0) {
       return 'No tasks currently registered in session. Use task_manage to create tasks or ask the agent to break down a plan into steps.';

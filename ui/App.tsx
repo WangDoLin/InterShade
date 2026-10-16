@@ -345,6 +345,15 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       setSessionState({ ...activeEngine.getSessionState() });
       setContextTokens(activeEngine.getContextTokens());
 
+      // If all tasks were completed, clean them up from database so they do not persist into future prompts
+      const currentTasks = TaskManager.listTasks(sessionState.id);
+      if (currentTasks.length > 0 && currentTasks.every((t) => t.status === 'completed')) {
+        TaskManager.clearCompletedTasks(sessionState.id);
+        setSessionTasks([]);
+      } else {
+        setSessionTasks(currentTasks);
+      }
+
       if (queuedPromptRef.current) {
         const next = queuedPromptRef.current;
         queuedPromptRef.current = null;
@@ -794,6 +803,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     } finally {
       setIsBusy(false);
       isBusyRef.current = false;
+      setCurrentToolName(null);
+      setProgressText(null);
     }
   };
 
@@ -835,6 +846,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     } finally {
       setIsBusy(false);
       isBusyRef.current = false;
+      setSwarmTasks([]);
+      setSwarmStatus(null);
     }
   };
 
@@ -931,7 +944,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             isStreamingText={isBusy && !currentToolName}
           />
 
-          {sessionTasks.length > 0 && (
+          {isBusy && sessionTasks.length > 0 && (
             <TaskTrackerView
               tasks={sessionTasks}
             />
@@ -952,7 +965,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             isBusy={isBusy}
           />
 
-          {swarmTasks.length > 0 && (
+          {isBusy && swarmTasks.length > 0 && (
             <SwarmDashboardView
               tasks={swarmTasks}
               overallStatus={swarmStatus || 'running'}
