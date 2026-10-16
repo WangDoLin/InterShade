@@ -56,6 +56,14 @@ export interface PermissionRequest {
   respond: (approved: boolean, remember?: boolean) => void;
 }
 
+export interface UserQuestionRequest {
+  id: string;
+  question: string;
+  options?: string[];
+  allowCustomInput?: boolean;
+  respond: (answer: string) => void;
+}
+
 export interface ToolExecutionContext {
   sessionId: string;
   cwd: string;
@@ -63,6 +71,7 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
   askConfirmation?: (prompt: string, details?: PermissionRequestDetails) => Promise<boolean>;
+  askQuestion?: (question: string, options?: string[], allowCustomInput?: boolean) => Promise<string>;
 }
 
 export type PermissionMode =

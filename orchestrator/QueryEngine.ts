@@ -8,6 +8,7 @@ import type {
   ToolCall,
   PermissionRequest,
   PermissionRequestDetails,
+  UserQuestionRequest,
 } from '../types/index.js';
 import { PermissionEngine } from '../security/PermissionEngine.js';
 import { SessionStore } from '../state/SessionStore.js';
@@ -88,6 +89,7 @@ export interface QueryEngineEvents {
   tool_progress: (progress: string) => void;
   tool_done: (name: string, id: string, result: string, isError: boolean) => void;
   permission_request: (request: PermissionRequest) => void;
+  ask_question: (request: UserQuestionRequest) => void;
   compress: () => void;
   prune: () => void;
   verification: (status: string) => void;
@@ -791,6 +793,22 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
     });
   }
 
+  requestUserQuestion(question: string, options?: string[], allowCustomInput = true): Promise<string> {
+    return new Promise<string>((resolve) => {
+      const id = randomUUID();
+      const req: UserQuestionRequest = {
+        id,
+        question,
+        options,
+        allowCustomInput,
+        respond: (answer: string) => {
+          resolve(answer);
+        },
+      };
+      this.emit('ask_question', req);
+    });
+  }
+
   private isTransientError(err: string): boolean {
     const lower = err.toLowerCase();
     return (
@@ -1318,6 +1336,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           onProgress: (p: string) => this.emit('tool_progress', p),
           askConfirmation: (prompt: string, details?: PermissionRequestDetails) =>
             this.requestConfirmation(prompt, details),
+          askQuestion: (question: string, options?: string[], allowCustomInput?: boolean) =>
+            this.requestUserQuestion(question, options, allowCustomInput),
         };
 
         const hasMutatingTool = pendingToolCalls.some(
