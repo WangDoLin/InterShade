@@ -16,6 +16,7 @@ export interface StatusLineProps {
   contextTokens?: number;
   maxContextTokens?: number;
   totalCostUsd?: number;
+  totalCachedTokens?: number;
   isBusy?: boolean;
 }
 
@@ -67,6 +68,7 @@ export const StatusLine: React.FC<StatusLineProps> = ({
   contextTokens,
   maxContextTokens,
   totalCostUsd,
+  totalCachedTokens,
   isBusy = false,
 }) => {
   const [gitInfo, setGitInfo] = useState('...');
@@ -139,6 +141,14 @@ export const StatusLine: React.FC<StatusLineProps> = ({
         <Text color={contextPct > 80 ? THEME.colors.warn : THEME.colors.ok}>
           ctx:[{bar}] {contextPct}%
         </Text>
+        {totalCachedTokens !== undefined && totalCachedTokens > 0 && (
+          <>
+            <Text color={THEME.colors.border}>{'\u2502'}</Text>
+            <Text color={THEME.colors.statusGood}>
+              cache:({totalCachedTokens.toLocaleString()})
+            </Text>
+          </>
+        )}
       </Box>
 
       {/* Right: Mode, Cost & Git info */}

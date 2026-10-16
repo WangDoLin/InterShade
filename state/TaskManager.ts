@@ -1,5 +1,8 @@
 import { getDatabase } from './Database.js';
 import { TaskGraph, type TaskItem, type TaskStatus } from '../tasks/TaskGraph.js';
+import { EventEmitter } from 'events';
+
+export const taskEvents = new EventEmitter();
 
 export interface CreateTaskInput {
   subject: string;
@@ -86,6 +89,7 @@ export class TaskManager {
       task.updatedAt
     );
 
+    taskEvents.emit('change', sessionId);
     return task;
   }
 
@@ -125,6 +129,7 @@ export class TaskManager {
       sessionId
     );
 
+    taskEvents.emit('change', sessionId);
     return updated;
   }
 
@@ -154,6 +159,7 @@ export class TaskManager {
     const db = getDatabase();
     const stmt = db.prepare('DELETE FROM tasks WHERE id = ? AND session_id = ?');
     stmt.run(taskId, sessionId);
+    taskEvents.emit('change', sessionId);
     return true;
   }
 

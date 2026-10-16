@@ -8,6 +8,8 @@ import { MessageView } from './components/MessageView.js';
 import { ToolProgressBlock } from './components/ToolProgressBlock.js';
 import { InteractivePrompt } from './components/InteractivePrompt.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
+import { QuestionPrompt } from './components/QuestionPrompt.js';
+import { TaskTrackerView } from './components/TaskTrackerView.js';
 import { HistoryInspectionView } from './components/HistoryInspectionView.js';
 import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
 import { SwarmDashboardView } from './components/SwarmDashboardView.js';
@@ -16,8 +18,10 @@ import type { SwarmTask, SwarmProgressEvent, SwarmRole } from '../engine/swarm/S
 import { TerminalMouseManager } from './services/TerminalMouseManager.js';
 import { extractPromptTurns, truncatePromptText } from './utils/turnExtractor.js';
 import { PlanManager } from '../state/PlanManager.js';
+import { TaskManager, taskEvents } from '../state/TaskManager.js';
+import type { TaskItem } from '../tasks/TaskGraph.js';
 import type { QueryEngine } from '../orchestrator/QueryEngine.js';
-import type { UnifiedMessage, PermissionRequest } from '../types/index.js';
+import type { UnifiedMessage, PermissionRequest, UserQuestionRequest } from '../types/index.js';
 
 import { i18n, t } from '../services/i18n/index.js';
 import { SUPPORTED_LOCALES } from '../services/i18n/types.js';
@@ -41,6 +45,10 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   const [isBusy, setIsBusy] = useState(false);
   const [queuedPrompt, setQueuedPrompt] = useState<string | null>(null);
   const [pendingPermission, setPendingPermission] = useState<PermissionRequest | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<UserQuestionRequest | null>(null);
+  const [sessionTasks, setSessionTasks] = useState<TaskItem[]>(() =>
+    TaskManager.listTasks(queryEngine.getSessionState().id)
+  );
   const [viewingTurnIndex, setViewingTurnIndex] = useState<number | null>(null);
   const [swarmTasks, setSwarmTasks] = useState<SwarmTask[]>([]);
   const [swarmStatus, setSwarmStatus] = useState<SwarmProgressEvent['overallStatus'] | null>(null);
@@ -93,6 +101,10 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       if (pendingPermission) {
         pendingPermission.respond(false, false);
         setPendingPermission(null);
+      }
+      if (pendingQuestion) {
+        pendingQuestion.respond('');
+        setPendingQuestion(null);
       }
 
       setIsBusy(false);
@@ -314,6 +326,18 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     queryEngine.on('permission_request', handlePermissionRequest);
     queryEngine.on('session_reset', handleSessionReset);
 
+    const handleAskQuestion = (req: UserQuestionRequest) => {
+      setPendingQuestion(req);
+    };
+    queryEngine.on('ask_question', handleAskQuestion);
+
+    const handleTaskChange = (changedSessionId: string) => {
+      if (changedSessionId === sessionState.id) {
+        setSessionTasks(TaskManager.listTasks(changedSessionId));
+      }
+    };
+    taskEvents.on('change', handleTaskChange);
+
     // If initial prompt was passed from CLI
     if (initialPrompt && !isBusy) {
       handleUserSubmit(initialPrompt);
@@ -321,6 +345,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
     return () => {
       queryEngine.removeAllListeners();
+      taskEvents.off('change', handleTaskChange);
     };
   }, [queryEngine, handleError]);
 
@@ -834,6 +859,12 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             isStreamingText={isBusy && !currentToolName}
           />
 
+          {sessionTasks.length > 0 && (
+            <TaskTrackerView
+              tasks={sessionTasks}
+            />
+          )}
+
           <StatusLine
             model={sessionState.model}
             provider={sessionState.provider}
@@ -841,6 +872,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             permissionMode={sessionState.permissionMode}
             totalInputTokens={sessionState.totalInputTokens}
             totalOutputTokens={sessionState.totalOutputTokens}
+            totalCachedTokens={sessionState.totalCachedTokens}
             contextTokens={contextTokens}
             totalCostUsd={sessionState.totalCostUsd}
             isBusy={isBusy}
@@ -853,7 +885,17 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             />
           )}
 
-          {pendingPermission ? (
+          {pendingQuestion ? (
+            <QuestionPrompt
+              question={pendingQuestion.question}
+              options={pendingQuestion.options}
+              allowCustomInput={pendingQuestion.allowCustomInput}
+              onRespond={(answer) => {
+                pendingQuestion.respond(answer);
+                setPendingQuestion(null);
+              }}
+            />
+          ) : pendingPermission ? (
             <PermissionPrompt
               toolName={pendingPermission.toolName}
               args={pendingPermission.args}
@@ -872,7 +914,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
               isBusy={isBusy}
               queuedPrompt={queuedPrompt}
               disabled={false}
-              focus={!pendingPermission}
+              focus={!pendingPermission && !pendingQuestion}
               availableCommands={commandRegistry.list()}
             />
           )}
