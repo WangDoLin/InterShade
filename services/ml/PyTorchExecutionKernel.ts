@@ -45,7 +45,7 @@ export class PyTorchExecutionKernel {
 
     // Construct uv run command with inline dependencies
     const depFlags = deps.map((d) => `--with "${d}"`).join(' ');
-    const cmd = `uv run ${depFlags} "${scriptPath}"`;
+    const cmd = `uv run ${depFlags} python "${scriptPath}"`;
 
     return new Promise((resolve) => {
       const child = exec(
