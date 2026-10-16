@@ -1755,6 +1755,89 @@ export const scheduleCommand: LocalCommand = {
   },
 };
 
+export const tabCommand: LocalCommand = {
+  name: 'tab',
+  description: 'Manage concurrent multi-session tabs in isolated Git worktrees (/tab new, /tab switch, /tab list, /tab merge, /tab close)',
+  type: 'local',
+  aliases: ['tabs', 'session_tab'],
+  execute: async (ctx) => {
+    const { MultiSessionPool } = await import('../../engine/swarm/MultiSessionPool.js');
+    const pool = MultiSessionPool.getInstance();
+    const sub = ctx.args[0]?.toLowerCase();
+
+    // 1. /tab list
+    if (!sub || sub === 'list') {
+      const tabs = pool.getTabs();
+      if (tabs.length === 0) {
+        return '[TABS]: No session tabs currently initialized in MultiSessionPool.\nUsage:\n  /tab new <title> [role]   - Create a secondary agent session tab in isolated Git worktree\n  /tab switch <number>      - Switch active view to tab\n  /tab merge [number]       - Merge worktree code back into main branch\n  /tab close <number>       - Close secondary tab and delete worktree';
+      }
+      const active = pool.getActiveTab();
+      const lines = [
+        `📑 Active Session Tabs (${tabs.length}):`,
+        ...tabs.map((t, i) => {
+          const marker = t.id === active.id ? '▶ [ACTIVE]' : '  ';
+          const wt = t.isPrimary ? '(Primary Workspace)' : `(Worktree: ${t.branch || path.basename(t.worktreePath)})`;
+          return `${marker} Tab ${i + 1}: "${t.title}" [${t.role.toUpperCase()}] -> ${t.status.toUpperCase()} ${wt}`;
+        }),
+        '',
+        'Usage:',
+        '  /tab new <title> [role]   - Create a secondary agent session tab in isolated Git worktree',
+        '  /tab switch <number>      - Switch active view to tab',
+        '  /tab merge [number]       - Merge worktree code back into main branch with VerificationGate',
+        '  /tab close <number>       - Close secondary tab and delete its worktree',
+      ];
+      return lines.join('\n');
+    }
+
+    // 2. /tab new <title> [role]
+    if (sub === 'new' || sub === 'create') {
+      const title = ctx.args[1] || 'Worker Session';
+      const role = (ctx.args[2] || 'general') as any;
+      try {
+        const newTab = await pool.createTab({ title, role });
+        return `[TABS]: Successfully created Tab "${newTab.title}" [Role: ${newTab.role}].\nIsolated Worktree: ${newTab.worktreePath}\nGit Branch: ${newTab.branch || 'N/A'}\nTo switch to this tab, type: /tab switch ${pool.getTabs().length}`;
+      } catch (err: unknown) {
+        return `[TABS ERROR]: Failed to create worktree session: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // 3. /tab switch <index|id|title>
+    if (sub === 'switch') {
+      const target = ctx.args[1];
+      if (!target) {
+        return '[TABS]: Please specify a tab number or title: /tab switch <number>';
+      }
+      const num = parseInt(target, 10);
+      try {
+        const switched = pool.switchActiveTab(!isNaN(num) ? num : target);
+        return `[TABS]: Switched active tab to "${switched.title}" (Tab ${pool.getTabs().findIndex((t) => t.id === switched.id) + 1}).`;
+      } catch (err: unknown) {
+        return `[TABS ERROR]: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    // 4. /tab merge [index|id]
+    if (sub === 'merge') {
+      const target = ctx.args[1] ? (parseInt(ctx.args[1], 10) || ctx.args[1]) : pool.getActiveTab().id;
+      const res = await pool.mergeTab(target);
+      return `[TABS MERGE]: ${res.message}`;
+    }
+
+    // 5. /tab close <index|id>
+    if (sub === 'close' || sub === 'delete') {
+      const target = ctx.args[1] ? (parseInt(ctx.args[1], 10) || ctx.args[1]) : pool.getActiveTab().id;
+      try {
+        const ok = await pool.closeTab(target);
+        return ok ? `[TABS]: Successfully closed tab "${target}". Worktree cleaned up.` : `[TABS]: Tab "${target}" not found.`;
+      } catch (err: unknown) {
+        return `[TABS ERROR]: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    return '[TABS]: Unknown command. Usage: /tab list | /tab new <title> | /tab switch <number> | /tab merge | /tab close';
+  },
+};
+
 export function registerBuiltinCommands(registry: CommandRegistry): void {
   // Claude Code core commands
   registry.register(reviewCommand);
@@ -1800,5 +1883,6 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(providersCommand);
   registry.register(setupCommand);
   registry.register(swarmCommand);
+  registry.register(tabCommand);
 }
 

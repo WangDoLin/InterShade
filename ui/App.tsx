@@ -10,6 +10,8 @@ import { InteractivePrompt } from './components/InteractivePrompt.js';
 import { PermissionPrompt } from './components/PermissionPrompt.js';
 import { QuestionPrompt } from './components/QuestionPrompt.js';
 import { TaskTrackerView } from './components/TaskTrackerView.js';
+import { SessionTabBar } from './components/SessionTabBar.js';
+import { MultiSessionPool, type SessionTab } from '../engine/swarm/MultiSessionPool.js';
 import { HistoryInspectionView } from './components/HistoryInspectionView.js';
 import { ReturnToBottomBar } from './components/ReturnToBottomBar.js';
 import { SwarmDashboardView } from './components/SwarmDashboardView.js';
@@ -49,6 +51,53 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   const [sessionTasks, setSessionTasks] = useState<TaskItem[]>(() =>
     TaskManager.listTasks(queryEngine.getSessionState().id)
   );
+  const [sessionTabs, setSessionTabs] = useState<SessionTab[]>(() => {
+    const pool = MultiSessionPool.getInstance();
+    pool.initPrimary(queryEngine);
+    return pool.getTabs();
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    return MultiSessionPool.getInstance().getActiveTab().id;
+  });
+
+  const activeTab = useMemo(() => {
+    const pool = MultiSessionPool.getInstance();
+    return pool.getTabs().find((t) => t.id === activeTabId) || pool.getTabs()[0];
+  }, [activeTabId, sessionTabs]);
+
+  const activeEngine = activeTab ? activeTab.queryEngine : queryEngine;
+
+  useEffect(() => {
+    const pool = MultiSessionPool.getInstance();
+    const handleTabSwitched = (tab: SessionTab) => {
+      setActiveTabId(tab.id);
+      setSessionTabs([...pool.getTabs()]);
+      setMessages([...tab.queryEngine.getMessages()]);
+      setSessionState({ ...tab.queryEngine.getSessionState() });
+      setContextTokens(tab.queryEngine.getContextTokens());
+      setIsBusy(tab.status === 'running');
+      setViewingTurnIndex(null);
+    };
+
+    const handleTabsChanged = () => {
+      setSessionTabs([...pool.getTabs()]);
+    };
+
+    pool.on('tab_switched', handleTabSwitched);
+    pool.on('tab_created', handleTabsChanged);
+    pool.on('tab_updated', handleTabsChanged);
+    pool.on('tab_progress', handleTabsChanged);
+    pool.on('tab_closed', handleTabsChanged);
+
+    return () => {
+      pool.off('tab_switched', handleTabSwitched);
+      pool.off('tab_created', handleTabsChanged);
+      pool.off('tab_updated', handleTabsChanged);
+      pool.off('tab_progress', handleTabsChanged);
+      pool.off('tab_closed', handleTabsChanged);
+    };
+  }, []);
+
   const [viewingTurnIndex, setViewingTurnIndex] = useState<number | null>(null);
   const [swarmTasks, setSwarmTasks] = useState<SwarmTask[]>([]);
   const [swarmStatus, setSwarmStatus] = useState<SwarmProgressEvent['overallStatus'] | null>(null);
@@ -90,7 +139,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     }
     lastAbortTimeRef.current = now;
 
-    const isRunning = isBusyRef.current || queryEngine.getIsRunning();
+    const isRunning = isBusyRef.current || activeEngine.getIsRunning();
 
     if (isRunning) {
       // Abort in-flight agent task while preserving the InterShader session
@@ -112,15 +161,15 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       setCurrentToolName(null);
       setProgressText(null);
 
-      queryEngine.abort();
+      activeEngine.abort();
 
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     } else {
       // Agent is idle: Exit the InterShader CLI session cleanly
       exit();
     }
-  }, [queryEngine, exit, pendingPermission]);
+  }, [activeEngine, exit, pendingPermission]);
 
   // Global key interception: Ctrl+C (abort/exit) & Alt+1..9 (rewind to turn)
   useInput((input, key) => {
@@ -129,11 +178,16 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    // Alt + 1..9 jumps to prompt turn (Antigravity CLI style)
+    // Alt + 1..9 switches active session tab when multiple tabs exist, or jumps to turn
     if (key.meta && /^[1-9]$/.test(input)) {
-      const targetTurn = parseInt(input, 10);
-      if (targetTurn <= promptTurns.length) {
-        setViewingTurnIndex(targetTurn);
+      const targetIndex = parseInt(input, 10);
+      const pool = MultiSessionPool.getInstance();
+      if (pool.getTabs().length > 1 && targetIndex <= pool.getTabs().length) {
+        pool.switchActiveTab(targetIndex);
+        return;
+      }
+      if (targetIndex <= promptTurns.length) {
+        setViewingTurnIndex(targetIndex);
       }
     }
   });
@@ -166,7 +220,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     setCurrentToolName(null);
     setProgressText(null);
     setPendingPermission(null);
-    const currentMsgs = queryEngine.getMessages();
+    const currentMsgs = activeEngine.getMessages();
     const lastMsg = currentMsgs[currentMsgs.length - 1];
     if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.content) {
       const rawDetail = err instanceof Error ? err.message : String(err || 'Request failed');
@@ -178,12 +232,20 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         timestamp: Date.now(),
       };
       setMessages([...currentMsgs, fallbackMsg]);
-      setContextTokens(queryEngine.getContextTokens());
+      setContextTokens(activeEngine.getContextTokens());
     } else {
       setMessages([...currentMsgs]);
-      setContextTokens(queryEngine.getContextTokens());
+      setContextTokens(activeEngine.getContextTokens());
     }
-  }, [queryEngine]);
+  }, [activeEngine]);
+
+  const initialPromptRanRef = useRef(false);
+  useEffect(() => {
+    if (initialPrompt && !initialPromptRanRef.current) {
+      initialPromptRanRef.current = true;
+      handleUserSubmitRef.current(initialPrompt);
+    }
+  }, [initialPrompt]);
 
   useEffect(() => {
     // 35ms UI render throttler (~28 FPS) to prevent terminal cursor stutter and 100% CPU on high-frequency stream chunks
@@ -195,7 +257,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       if (pendingProgressText !== null) {
         setProgressText(pendingProgressText);
       }
-      setContextTokens(queryEngine.getContextTokens());
+      setContextTokens(activeEngine.getContextTokens());
       lastRenderTime = Date.now();
       throttleTimer = null;
     };
@@ -217,7 +279,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
     };
 
-    // Listen to QueryEngine events
+    // Listen to activeEngine events
     const handleText = (delta?: string) => {
       if (delta) {
         const clean = delta.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
@@ -245,8 +307,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
       setCurrentToolName(name);
       setProgressText(null);
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     };
 
     const handleToolProgress = (progress: string) => {
@@ -260,13 +322,13 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
       setCurrentToolName(null);
       setProgressText(null);
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     };
 
     const handleUsage = () => {
-      setSessionState({ ...queryEngine.getSessionState() });
-      setContextTokens(queryEngine.getContextTokens());
+      setSessionState({ ...activeEngine.getSessionState() });
+      setContextTokens(activeEngine.getContextTokens());
     };
 
     const handleDone = () => {
@@ -279,9 +341,9 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       setCurrentToolName(null);
       setProgressText(null);
       setPendingPermission(null);
-      setMessages([...queryEngine.getMessages()]);
-      setSessionState({ ...queryEngine.getSessionState() });
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setSessionState({ ...activeEngine.getSessionState() });
+      setContextTokens(activeEngine.getContextTokens());
 
       if (queuedPromptRef.current) {
         const next = queuedPromptRef.current;
@@ -299,37 +361,37 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
     const handleSessionReset = (newSession: any) => {
       setSessionState({ ...newSession });
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     };
 
     const handleUserMessage = () => {
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     };
 
     const handleSyntheticMessage = () => {
-      setMessages([...queryEngine.getMessages()]);
-      setContextTokens(queryEngine.getContextTokens());
+      setMessages([...activeEngine.getMessages()]);
+      setContextTokens(activeEngine.getContextTokens());
     };
-
-    queryEngine.on('text', handleText);
-    queryEngine.on('thought', handleThought);
-    queryEngine.on('user_message', handleUserMessage);
-    queryEngine.on('message', handleSyntheticMessage);
-    queryEngine.on('tool_start', handleToolStart);
-    queryEngine.on('tool_progress', handleToolProgress);
-    queryEngine.on('tool_done', handleToolDone);
-    queryEngine.on('usage', handleUsage);
-    queryEngine.on('done', handleDone);
-    queryEngine.on('error', handleError);
-    queryEngine.on('permission_request', handlePermissionRequest);
-    queryEngine.on('session_reset', handleSessionReset);
 
     const handleAskQuestion = (req: UserQuestionRequest) => {
       setPendingQuestion(req);
     };
-    queryEngine.on('ask_question', handleAskQuestion);
+
+    activeEngine.on('text', handleText);
+    activeEngine.on('thought', handleThought);
+    activeEngine.on('user_message', handleUserMessage);
+    activeEngine.on('message', handleSyntheticMessage);
+    activeEngine.on('tool_start', handleToolStart);
+    activeEngine.on('tool_progress', handleToolProgress);
+    activeEngine.on('tool_done', handleToolDone);
+    activeEngine.on('usage', handleUsage);
+    activeEngine.on('done', handleDone);
+    activeEngine.on('error', handleError);
+    activeEngine.on('permission_request', handlePermissionRequest);
+    activeEngine.on('session_reset', handleSessionReset);
+    activeEngine.on('ask_question', handleAskQuestion);
 
     const handleTaskChange = (changedSessionId: string) => {
       if (changedSessionId === sessionState.id) {
@@ -338,21 +400,31 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     };
     taskEvents.on('change', handleTaskChange);
 
-    // If initial prompt was passed from CLI
-    if (initialPrompt && !isBusy) {
-      handleUserSubmit(initialPrompt);
-    }
-
     return () => {
-      queryEngine.removeAllListeners();
+      if (throttleTimer) {
+        clearTimeout(throttleTimer);
+      }
+      activeEngine.off('text', handleText);
+      activeEngine.off('thought', handleThought);
+      activeEngine.off('user_message', handleUserMessage);
+      activeEngine.off('message', handleSyntheticMessage);
+      activeEngine.off('tool_start', handleToolStart);
+      activeEngine.off('tool_progress', handleToolProgress);
+      activeEngine.off('tool_done', handleToolDone);
+      activeEngine.off('usage', handleUsage);
+      activeEngine.off('done', handleDone);
+      activeEngine.off('error', handleError);
+      activeEngine.off('permission_request', handlePermissionRequest);
+      activeEngine.off('session_reset', handleSessionReset);
+      activeEngine.off('ask_question', handleAskQuestion);
       taskEvents.off('change', handleTaskChange);
     };
-  }, [queryEngine, handleError]);
+  }, [activeEngine, handleError]);
 
   const handleUserSubmit = async (prompt: string) => {
     if (prompt === '/exit' || prompt === '/quit') {
       if (isBusyRef.current) {
-        queryEngine.abort();
+        activeEngine.abort();
       }
       exit();
       return;
@@ -368,8 +440,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content: '[Queue]: Cleared queued prompt.',
           timestamp: Date.now(),
         };
-        queryEngine.appendSyntheticMessage(noticeMsg);
-        setMessages([...queryEngine.getMessages()]);
+        activeEngine.appendSyntheticMessage(noticeMsg);
+        setMessages([...activeEngine.getMessages()]);
       } else {
         const noticeMsg: UnifiedMessage = {
           id: randomUUID(),
@@ -377,8 +449,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content: '[Queue]: No prompt is currently queued.',
           timestamp: Date.now(),
         };
-        queryEngine.appendSyntheticMessage(noticeMsg);
-        setMessages([...queryEngine.getMessages()]);
+        activeEngine.appendSyntheticMessage(noticeMsg);
+        setMessages([...activeEngine.getMessages()]);
       }
       return;
     }
@@ -393,9 +465,9 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     }
 
     if (prompt === '/clear') {
-      queryEngine.clearMessages();
+      activeEngine.clearMessages();
       setMessages([]);
-      setContextTokens(queryEngine.getContextTokens());
+      setContextTokens(activeEngine.getContextTokens());
       process.stdout.write('\x1b[2J\x1b[H\x1b[3J');
       return;
     }
@@ -423,11 +495,11 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         args.includes('-d');
 
       const oldSessionId = sessionState.id;
-      const newSession = queryEngine.resetSession({ deleteCurrent: isDeleteRequested });
+      const newSession = activeEngine.resetSession({ deleteCurrent: isDeleteRequested });
 
       setMessages([]);
       setSessionState(newSession);
-      setContextTokens(queryEngine.getContextTokens());
+      setContextTokens(activeEngine.getContextTokens());
       setCurrentToolName(null);
       setProgressText(null);
       setPendingPermission(null);
@@ -456,7 +528,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: prompt,
         timestamp: Date.now(),
       };
-      queryEngine.appendSyntheticMessage(userCmdMsg);
+      activeEngine.appendSyntheticMessage(userCmdMsg);
 
       const parts = prompt.split(' ');
       const targetLang = parts[1];
@@ -468,8 +540,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content: `${t('header.lang')}: ${current}. Available: ${SUPPORTED_LOCALES.join(', ')}`,
           timestamp: Date.now() + 1,
         };
-        queryEngine.appendSyntheticMessage(infoMsg);
-        setMessages([...queryEngine.getMessages()]);
+        activeEngine.appendSyntheticMessage(infoMsg);
+        setMessages([...activeEngine.getMessages()]);
         return;
       }
 
@@ -484,10 +556,10 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: noticeText,
         timestamp: Date.now() + 1,
       };
-      queryEngine.appendSyntheticMessage(noticeMsg);
-      setMessages([...queryEngine.getMessages()]);
-      setSessionState({ ...queryEngine.getSessionState() });
-      setContextTokens(queryEngine.getContextTokens());
+      activeEngine.appendSyntheticMessage(noticeMsg);
+      setMessages([...activeEngine.getMessages()]);
+      setSessionState({ ...activeEngine.getSessionState() });
+      setContextTokens(activeEngine.getContextTokens());
       return;
     }
 
@@ -498,7 +570,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: prompt,
         timestamp: Date.now(),
       };
-      queryEngine.appendSyntheticMessage(userCmdMsg);
+      activeEngine.appendSyntheticMessage(userCmdMsg);
 
       const targetPath = prompt.replace(/^\/plan\s*/, '').trim();
       const sub = targetPath.toLowerCase();
@@ -514,8 +586,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content,
           timestamp: Date.now() + 1,
         };
-        queryEngine.appendSyntheticMessage(planMsg);
-        setMessages([...queryEngine.getMessages()]);
+        activeEngine.appendSyntheticMessage(planMsg);
+        setMessages([...activeEngine.getMessages()]);
         return;
       }
 
@@ -527,14 +599,14 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content: '[PLAN RESET]: Active plan cleared from session memory. Ready to establish a new plan.',
           timestamp: Date.now() + 1,
         };
-        queryEngine.appendSyntheticMessage(resetMsg);
-        setMessages([...queryEngine.getMessages()]);
+        activeEngine.appendSyntheticMessage(resetMsg);
+        setMessages([...activeEngine.getMessages()]);
         return;
       }
 
       const currentMode = sessionState.permissionMode;
       const nextMode = currentMode === 'plan' && !targetPath ? 'default' : 'plan';
-      queryEngine.setPermissionMode(nextMode);
+      activeEngine.setPermissionMode(nextMode);
 
       let noticeText = nextMode === 'plan' ? t('slash.planModeOn') : t('slash.planModeOff');
       if (targetPath) {
@@ -551,8 +623,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: noticeText,
         timestamp: Date.now() + 1,
       };
-      queryEngine.appendSyntheticMessage(noticeMsg);
-      setMessages([...queryEngine.getMessages()]);
+      activeEngine.appendSyntheticMessage(noticeMsg);
+      setMessages([...activeEngine.getMessages()]);
       setSessionState({ ...sessionState, permissionMode: nextMode });
       return;
     }
@@ -568,7 +640,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           content: prompt,
           timestamp: Date.now(),
         };
-        queryEngine.appendSyntheticMessage(userCmdMsg);
+        activeEngine.appendSyntheticMessage(userCmdMsg);
 
         const cmdCtx = {
           cwd: sessionState.cwd,
@@ -584,20 +656,20 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
             content: res,
             timestamp: Date.now() + 1,
           };
-          queryEngine.appendSyntheticMessage(localMsg);
-          setMessages([...queryEngine.getMessages()]);
+          activeEngine.appendSyntheticMessage(localMsg);
+          setMessages([...activeEngine.getMessages()]);
 
           // Synchronize sessionState and QueryEngine with model/provider/maxTurns/permissionMode changes
           const updatedState = { ...sessionState, ...(cmdCtx.sessionState as unknown as typeof sessionState) };
           setSessionState(updatedState);
           if (updatedState.permissionMode && updatedState.permissionMode !== sessionState.permissionMode) {
-            queryEngine.setPermissionMode(updatedState.permissionMode);
+            activeEngine.setPermissionMode(updatedState.permissionMode);
           }
           if (updatedState.provider && updatedState.model) {
-            queryEngine.updateSessionModel(updatedState.provider, updatedState.model);
+            activeEngine.updateSessionModel(updatedState.provider, updatedState.model);
           }
           if ((cmdCtx.sessionState as Record<string, unknown>).maxTurns !== undefined) {
-            queryEngine.updateMaxTurns((cmdCtx.sessionState as Record<string, unknown>).maxTurns as number);
+            activeEngine.updateMaxTurns((cmdCtx.sessionState as Record<string, unknown>).maxTurns as number);
           }
           return;
         }
@@ -607,7 +679,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           setIsBusy(true);
           isBusyRef.current = true;
           try {
-            await queryEngine.executeUserPrompt(expandedPrompt);
+            await activeEngine.executeUserPrompt(expandedPrompt);
           } catch {
             // Handled in event listeners
           } finally {
@@ -648,8 +720,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: historySummary,
         timestamp: Date.now(),
       };
-      queryEngine.appendSyntheticMessage(historyMsg);
-      setMessages([...queryEngine.getMessages()]);
+      activeEngine.appendSyntheticMessage(historyMsg);
+      setMessages([...activeEngine.getMessages()]);
       return;
     }
 
@@ -665,7 +737,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         content: prompt,
         timestamp: Date.now(),
       };
-      queryEngine.appendSyntheticMessage(userCmdMsg);
+      activeEngine.appendSyntheticMessage(userCmdMsg);
 
       const allCommands = commandRegistry.list();
       const codeQualityNames = ['doctor', 'review', 'commit', 'diff', 'rewind', 'init', 'export'];
@@ -699,8 +771,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         ].join('\n'),
         timestamp: Date.now() + 1,
       };
-      queryEngine.appendSyntheticMessage(helpMsg);
-      setMessages([...queryEngine.getMessages()]);
+      activeEngine.appendSyntheticMessage(helpMsg);
+      setMessages([...activeEngine.getMessages()]);
       return;
     }
 
@@ -716,7 +788,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     setIsBusy(true);
     isBusyRef.current = true;
     try {
-      await queryEngine.executeUserPrompt(prompt);
+      await activeEngine.executeUserPrompt(prompt);
     } catch (err: unknown) {
       handleError(err);
     } finally {
@@ -741,8 +813,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       content: `[Swarm Multi-Session Dispatch]:\n${promptSlots.map((s, i) => `${i + 1}. [${s.role.toUpperCase()}]: "${s.prompt}"`).join('\n')}`,
       timestamp: Date.now(),
     };
-    queryEngine.appendSyntheticMessage(userMsg);
-    setMessages([...queryEngine.getMessages()]);
+    activeEngine.appendSyntheticMessage(userMsg);
+    setMessages([...activeEngine.getMessages()]);
 
     try {
       const { tasks, mergeResult } = await coordinator.runParallel(promptSlots, sessionState.cwd, true);
@@ -756,8 +828,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
         ].filter(Boolean).join('\n'),
         timestamp: Date.now() + 1,
       };
-      queryEngine.appendSyntheticMessage(summaryMsg);
-      setMessages([...queryEngine.getMessages()]);
+      activeEngine.appendSyntheticMessage(summaryMsg);
+      setMessages([...activeEngine.getMessages()]);
     } catch (err: unknown) {
       handleError(err);
     } finally {
@@ -864,6 +936,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
               tasks={sessionTasks}
             />
           )}
+
+          <SessionTabBar tabs={sessionTabs} activeTabId={activeTabId} />
 
           <StatusLine
             model={sessionState.model}
