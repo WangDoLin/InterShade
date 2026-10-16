@@ -7,6 +7,7 @@ import path from 'path';
 import { createTwoFilesPatch } from 'diff';
 import { GitSafetyGuard } from '../../security/GitSafetyGuard.js';
 import { FileLockRegistry } from '../../engine/swarm/FileLockRegistry.js';
+import { SerenaSemanticEngine } from '../../engine/semantic/SerenaSemanticEngine.js';
 
 export interface FileEditOutput {
   success: boolean;
@@ -15,6 +16,44 @@ export interface FileEditOutput {
   linesAdded: number;
   linesRemoved: number;
   message: string;
+  diagnostics?: string;
+}
+
+/**
+ * Whitespace-tolerant line-by-line block matching (Modeled after Aider and Hermes Agent).
+ * Returns the exact matched substring in normalizedContent if a unique match is found.
+ */
+function findFuzzyMatch(content: string, oldString: string): string | null {
+  const contentLines = content.split('\n');
+  const targetLines = oldString.split('\n');
+
+  const trimmedTargetLines = targetLines.map((l) => l.trim());
+  if (trimmedTargetLines.length === 0 || trimmedTargetLines.every((l) => l === '')) {
+    return null;
+  }
+
+  const matchIndices: number[] = [];
+  const targetLen = targetLines.length;
+
+  for (let i = 0; i <= contentLines.length - targetLen; i++) {
+    let matched = true;
+    for (let j = 0; j < targetLen; j++) {
+      if (contentLines[i + j].trim() !== trimmedTargetLines[j]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) {
+      matchIndices.push(i);
+    }
+  }
+
+  if (matchIndices.length === 1) {
+    const startIndex = matchIndices[0];
+    return contentLines.slice(startIndex, startIndex + targetLen).join('\n');
+  }
+
+  return null;
 }
 
 export class FileEditTool extends BaseTool<
@@ -29,14 +68,14 @@ export class FileEditTool extends BaseTool<
 > {
   readonly name = 'file_edit';
   readonly description =
-    'Edit the contents of a file by replacing an exact substring (oldString -> newString), with concurrency mtime safety checks and Git diff preview generation.';
+    'Edit the contents of a file by replacing an exact or whitespace-tolerant substring (oldString -> newString), with concurrency mtime safety checks, Git diff preview, and automated post-edit compiler diagnostics.';
   readonly isReadOnly = false;
   readonly isDestructive = false;
   readonly requiresPermission = true;
 
   readonly inputSchema = z.object({
     filePath: z.string().describe('Path to the target file to edit'),
-    oldString: z.string().describe('The exact string block to replace'),
+    oldString: z.string().describe('The exact or trimmed string block to replace'),
     newString: z.string().describe('The new replacement string block'),
     replaceAll: z.boolean().optional().describe('Replace all matching occurrences (default: false)'),
     expectedMtime: z.number().optional().describe('Expected mtime timestamp to prevent dirty writes'),
@@ -89,25 +128,35 @@ export class FileEditTool extends BaseTool<
     const normalizedOldString = args.oldString.replace(/\r\n/g, '\n');
     const normalizedNewString = args.newString.replace(/\r\n/g, '\n');
 
+    let targetToReplace = normalizedOldString;
+    let matchType = 'exact';
+
     if (!normalizedContent.includes(normalizedOldString)) {
-      throw new Error(
-        `[MATCH ERROR]: Could not find exact oldString match in "${args.filePath}". Please verify indentation, whitespace, or re-read the file for full surrounding context.`
-      );
+      // Fallback: Whitespace-tolerant line-by-line fuzzy match (Aider / Hermes pattern)
+      const fuzzyMatch = findFuzzyMatch(normalizedContent, normalizedOldString);
+      if (fuzzyMatch) {
+        targetToReplace = fuzzyMatch;
+        matchType = 'whitespace-tolerant fuzzy match';
+      } else {
+        throw new Error(
+          `[MATCH ERROR]: Could not find exact or whitespace-tolerant match for oldString in "${args.filePath}". Please verify indentation, whitespace, or re-read the file for full surrounding context.`
+        );
+      }
     }
 
-    const occurrences = normalizedContent.split(normalizedOldString).length - 1;
+    const occurrences = normalizedContent.split(targetToReplace).length - 1;
     if (occurrences > 1 && !args.replaceAll) {
       throw new Error(
-        `[AMBIGUITY ERROR]: oldString was found ${occurrences} times in the file. Please provide more surrounding lines of context to make it unique, or specify replaceAll: true.`
+        `[AMBIGUITY ERROR]: target block was found ${occurrences} times in the file. Please provide more surrounding lines of context to make it unique, or specify replaceAll: true.`
       );
     }
 
     // 2. Perform replacement
     let contentAfter: string;
     if (args.replaceAll) {
-      contentAfter = normalizedContent.replaceAll(normalizedOldString, normalizedNewString);
+      contentAfter = normalizedContent.replaceAll(targetToReplace, normalizedNewString);
     } else {
-      contentAfter = normalizedContent.replace(normalizedOldString, normalizedNewString);
+      contentAfter = normalizedContent.replace(targetToReplace, normalizedNewString);
     }
 
     // Restore CRLF if original file used it
@@ -131,10 +180,30 @@ export class FileEditTool extends BaseTool<
     // 5. Write file
     fs.writeFileSync(resolvedPath, contentAfter, 'utf-8');
 
-    const linesOld = args.oldString.split('\n').length;
-    const linesNew = args.newString.split('\n').length;
+    const linesOld = targetToReplace.split('\n').length;
+    const linesNew = normalizedNewString.split('\n').length;
     const linesAdded = Math.max(0, linesNew - linesOld);
     const linesRemoved = Math.max(0, linesOld - linesNew);
+
+    let diagnosticNotice = '';
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+      try {
+        const diags = SerenaSemanticEngine.getDiagnostics(resolvedPath, contentAfter);
+        const errors = diags.filter((d) => d.category === 'error');
+        if (errors.length > 0) {
+          const topErrors = errors.slice(0, 3);
+          diagnosticNotice =
+            `\n\n⚠️ [COMPILER DIAGNOSTICS DETECTED]: ${errors.length} error(s) found in ${path.basename(resolvedPath)}:\n` +
+            topErrors.map((e) => `  - Line ${e.line}:${e.character} [TS${e.code}] ${e.message}`).join('\n');
+        }
+      } catch {
+        // Silently skip diagnostic failures on external files
+      }
+    }
+
+    const matchNote = matchType !== 'exact' ? ` (${matchType})` : '';
+    const message = `Updated ${args.filePath} (+${linesAdded}, -${linesRemoved} lines)${matchNote}${diagnosticNotice}`;
 
     return {
       success: true,
@@ -142,7 +211,8 @@ export class FileEditTool extends BaseTool<
       diff,
       linesAdded,
       linesRemoved,
-      message: `Updated ${args.filePath} (+${linesAdded}, -${linesRemoved} lines)`,
+      message,
+      diagnostics: diagnosticNotice || undefined,
     };
   }
 }

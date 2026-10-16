@@ -7,10 +7,11 @@ import path from 'path';
 import { createTwoFilesPatch } from 'diff';
 import { GitSafetyGuard } from '../../security/GitSafetyGuard.js';
 import { FileLockRegistry } from '../../engine/swarm/FileLockRegistry.js';
+import { SerenaSemanticEngine } from '../../engine/semantic/SerenaSemanticEngine.js';
 
 export class FileWriteTool extends BaseTool<{ filePath: string; content: string; overwrite?: boolean }, string> {
   readonly name = 'file_write';
-  readonly description = 'Create a new file or completely overwrite an existing file (automatically creates parent directories).';
+  readonly description = 'Create a new file or completely overwrite an existing file (automatically creates parent directories) with automated compiler diagnostics.';
   readonly isReadOnly = false;
   readonly isDestructive = true;
   readonly requiresPermission = true;
@@ -69,6 +70,23 @@ export class FileWriteTool extends BaseTool<{ filePath: string; content: string;
     fs.writeFileSync(resolvedPath, args.content, 'utf-8');
 
     const lines = args.content.split(/\r?\n/).length;
-    return `Wrote ${args.content.length} bytes (${lines} lines) to ${args.filePath}`;
+    let diagnosticNotice = '';
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (['.ts', '.tsx', '.js', '.jsx'].includes(ext)) {
+      try {
+        const diags = SerenaSemanticEngine.getDiagnostics(resolvedPath, args.content);
+        const errors = diags.filter((d) => d.category === 'error');
+        if (errors.length > 0) {
+          const topErrors = errors.slice(0, 3);
+          diagnosticNotice =
+            `\n\n⚠️ [COMPILER DIAGNOSTICS DETECTED]: ${errors.length} error(s) found in ${path.basename(resolvedPath)}:\n` +
+            topErrors.map((e) => `  - Line ${e.line}:${e.character} [TS${e.code}] ${e.message}`).join('\n');
+        }
+      } catch {
+        // Silently skip
+      }
+    }
+
+    return `Wrote ${args.content.length} bytes (${lines} lines) to ${args.filePath}${diagnosticNotice}`;
   }
 }

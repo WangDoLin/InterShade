@@ -293,8 +293,10 @@ export class SerenaSemanticEngine {
       noEmit: true,
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.ESNext,
-      strict: true,
+      jsx: ts.JsxEmit.ReactJSX,
+      strict: false,
       allowJs: true,
+      skipLibCheck: true,
     };
 
     const sourceFile = ts.createSourceFile(
@@ -302,7 +304,7 @@ export class SerenaSemanticEngine {
       content,
       ts.ScriptTarget.Latest,
       true,
-      ts.ScriptKind.TS
+      fullPath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     );
 
     const program = ts.createProgram({
@@ -321,7 +323,7 @@ export class SerenaSemanticEngine {
           }
           return undefined;
         },
-        getDefaultLibFileName: () => 'lib.d.ts',
+        getDefaultLibFileName: (opts) => ts.getDefaultLibFilePath(opts),
         writeFile: () => {},
         getCurrentDirectory: () => path.dirname(fullPath),
         getCanonicalFileName: (f) => f,
@@ -332,9 +334,18 @@ export class SerenaSemanticEngine {
       },
     });
 
+    const ignoredIsolatedCodes = new Set([
+      2307, // Cannot find module
+      2792, // Cannot find module
+      2580, // Cannot find name 'process'
+      2584, // Cannot find name 'console'
+      2318, // Cannot find global type Promise
+      1259, // allowSyntheticDefaultImports
+    ]);
+
     const rawDiagnostics = [
       ...program.getSyntacticDiagnostics(sourceFile),
-      ...program.getSemanticDiagnostics(sourceFile),
+      ...program.getSemanticDiagnostics(sourceFile).filter((d) => !ignoredIsolatedCodes.has(d.code)),
     ];
 
     const categoryMap: Record<ts.DiagnosticCategory, SerenaDiagnostic['category']> = {
