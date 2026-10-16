@@ -184,6 +184,48 @@
       "approvedBy": "InterShader Security Gate",
       "approvedAt": "2026-10-13T14:37:48.239Z",
       "notes": "Approved testing skill"
+    },
+    "pytorch-deep-learning-architect": {
+      "name": "pytorch-deep-learning-architect",
+      "enabled": true,
+      "approvedCommitSha": "a1b2c3d4e5f67890123456789abcdef012345678",
+      "approvedContentSha256": "ca5dc72b9bb4f110ef5e47075d1c4c613933c19dc4da99dddb8d62d9199b96e1",
+      "capabilitiesAllowed": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-16T16:00:00.000Z",
+      "notes": "Approved deep learning PyTorch architecture skill"
+    },
+    "automl-tree-search-engineer": {
+      "name": "automl-tree-search-engineer",
+      "enabled": true,
+      "approvedCommitSha": "b2c3d4e5f67890123456789abcdef0123456789a",
+      "approvedContentSha256": "c6d73f8ca68206a0c1fbbc4a6520d943f04b82044adf886855c22d4b51cfe0d5",
+      "capabilitiesAllowed": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-16T16:00:00.000Z",
+      "notes": "Approved AutoML tree search over code and hyperparameters"
+    },
+    "bio-ai-foundation-models": {
+      "name": "bio-ai-foundation-models",
+      "enabled": true,
+      "approvedCommitSha": "c3d4e5f67890123456789abcdef0123456789a1b",
+      "approvedContentSha256": "ab1a285eeb3c0fd978930fa6ad8db243267e90334508bf6cb40e4d84dd38b62c",
+      "capabilitiesAllowed": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "approvedBy": "InterShader Security Gate",
+      "approvedAt": "2026-10-16T16:00:00.000Z",
+      "notes": "Approved biological AI and foundation models skill"
     }
   }
 }

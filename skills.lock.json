@@ -1,6 +1,6 @@
 {
   "lockfileVersion": "1.0.0",
-  "generatedAt": "2026-10-13T14:37:48.237Z",
+  "generatedAt": "2026-10-16T16:06:32.127Z",
   "skills": {
     "agent-tool-executor": {
       "version": "1.0.0",
@@ -15,7 +15,52 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.125Z"
+    },
+    "architecture-stress-test": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "e696419d72c5f239608fbd4495d55e20c0fe3874a309a6b05ae610a82d0bc9ec",
+      "treeSha256": "d1f845681333e28ef07fd1e9064bde6e6c7da5cf282f69b2e1b36fdc5a671aa8",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "automl-tree-search-engineer": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/automl-tree-search-engineer",
+      "commitSha": "b2c3d4e5f67890123456789abcdef0123456789a",
+      "license": "Apache-2.0",
+      "contentSha256": "c6d73f8ca68206a0c1fbbc4a6520d943f04b82044adf886855c22d4b51cfe0d5",
+      "treeSha256": "ed9b5479af0651d25c61ecaae866854bdae7c8dcf1841e356158f054cfe53e38",
+      "capabilities": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "bio-ai-foundation-models": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/bio-ai-foundation-models",
+      "commitSha": "c3d4e5f67890123456789abcdef0123456789a1b",
+      "license": "Apache-2.0",
+      "contentSha256": "ab1a285eeb3c0fd978930fa6ad8db243267e90334508bf6cb40e4d84dd38b62c",
+      "treeSha256": "710711df9b828a5c35b0582a7aa0f915ca4bef5d888139e5d6fb9696577390c0",
+      "capabilities": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "cicd-deployment-orchestrator": {
       "version": "1.0.0",
@@ -30,7 +75,7 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "cloud-provider-adapter": {
       "version": "1.0.0",
@@ -45,7 +90,7 @@
         "filesystemWrite": false
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "database-sql-optimizer": {
       "version": "1.0.0",
@@ -60,7 +105,22 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "database-zero-downtime-migration": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "d55b62fb905b3053f4c2bbc48eecce1892a9f9f7da82facdbb6e850f1009d926",
+      "treeSha256": "33b028fec3b7276386337d7b6b8ccc47a47f41e41f42ee38f4721d7f7706778f",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "devops-docker-kubernetes": {
       "version": "1.0.0",
@@ -75,7 +135,22 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "documentation-auto-sync": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "493dbd9c5f2dda7aff175b843286b9d2c3475927ee02e0642237cd13d6e2cb0e",
+      "treeSha256": "c0576865f1c16c2aee2d9609699f5f6dfa0031f281ac194779a319e894eaf7bf",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "fullstack-web-architect": {
       "version": "1.0.0",
@@ -90,7 +165,7 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "git-workflow-pro": {
       "version": "1.0.0",
@@ -105,7 +180,7 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "performance-profiler-debugger": {
       "version": "1.0.0",
@@ -120,7 +195,7 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "python-advanced-engineer": {
       "version": "1.0.0",
@@ -135,7 +210,22 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "pytorch-deep-learning-architect": {
+      "version": "1.0.0",
+      "upstreamUrl": "https://github.com/agentskills/agentskills/tree/main/skills/pytorch-deep-learning-architect",
+      "commitSha": "a1b2c3d4e5f67890123456789abcdef012345678",
+      "license": "Apache-2.0",
+      "contentSha256": "ca5dc72b9bb4f110ef5e47075d1c4c613933c19dc4da99dddb8d62d9199b96e1",
+      "treeSha256": "b824f39859f697c1d4715ea7bb127bc119915b2b56dc497cdcf0ae084ece333d",
+      "capabilities": {
+        "scriptExecution": true,
+        "networkAccess": true,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "security-audit-snyk-guard": {
       "version": "1.0.0",
@@ -150,7 +240,22 @@
         "filesystemWrite": false
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "security-differential-review": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "7d5a43c4fbb01cf5fd57766c1200c86211ee0cea2761951e77a572f26299f856",
+      "treeSha256": "789d6b1c3049b2a31c54d3d6df0d4d9ee1068f62bcc6e57d94695370497ef7f2",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "test-automation-vitest": {
       "version": "1.0.0",
@@ -165,7 +270,22 @@
         "filesystemWrite": true
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "test-driven-acceptance-gate": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "745cf2cef9554a22858b60f41fbcbed3aa32fcc774d7771425564b7f11d3f141",
+      "treeSha256": "19b28abf979d3f1e3bf5bfdd502d336ecc07d11f1139a7116b0a6c678349c742",
+      "capabilities": {
+        "scriptExecution": true,
+        "networkAccess": false,
+        "filesystemWrite": true
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
     },
     "typescript-nodejs-analyzer": {
       "version": "1.0.0",
@@ -180,7 +300,337 @@
         "filesystemWrite": false
       },
       "auditStatus": "PASSED",
-      "lockedAt": "2026-10-13T14:37:48.237Z"
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "architecture-review": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "73ed9d3c5f74cfbe28de4902ae515b605fc11bcd92a013a600faa31f864579d2",
+      "treeSha256": "90b7a2b95cb959a3ad0f5951aa95f6ef480fa4b59f9238e0f98fcf6c0a60899e",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "banner-design": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "MIT",
+      "contentSha256": "913d9c4b2a3b405d638d50131e0dd3fe2787c839423d79287b7858ac29255acc",
+      "treeSha256": "f5ce83d07cd492be7ab7d58cf814c19fc6e7d48d093e621426c14a700ede8267",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "brainstorming": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "50d25bc5f352c96f642e51c105327dd28fe9e824e4e006437176702f4e4dac0b",
+      "treeSha256": "ed7721b55cea4a333085d67edcac2b9ca9909a9af2990e0532cf8485d5afe3c7",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "brand": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "6a450ee1a83a403d47cec2ede9030feb60a67a81fc425d2406e975339313bd44",
+      "treeSha256": "8431f4168d7be94503836ec2624af04c179f11c8e8b34aa0ba40b7717d786986",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "code-review": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "25f99305c3c07845201f87c5182669b3d09bd24aa526abfef5ece01e1422f421",
+      "treeSha256": "ac87a9e2516f3be90f180787ab82e72a5c62cca06acef64dbff0ebe62eae9ae1",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "dependency-audit": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "66d5a065967229169e0d87e96f3ceb1783bef407b3ad1486608208b0d744adbc",
+      "treeSha256": "ec41567735341a4e0cdf5c78ba227353d146425074c503d6e6f555888226fe3a",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "design": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "MIT",
+      "contentSha256": "413f4ab913d07f7fd92acbadc25d71aad63443be0c40d11234944aea688603b6",
+      "treeSha256": "ad90e89adb340150ebc8c3ac7585c3cd609e4d6119918f13d15004d168d6d63e",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "design-system": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "MIT",
+      "contentSha256": "655468bb723a6bc9d17fcb09a6a005e10e313d63b879f4d74fb2abdc3041ae3f",
+      "treeSha256": "2bd89756cbed95ecbc1eb97a1d13d040280537d39c6ae5e2faf23dfed1aba5a8",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "documentation-sync": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "e9d063cd98a841397f4e0aa3e0d1e9abc7753f26fe3c397a08d8f95fee1a61fb",
+      "treeSha256": "5aee134e876aa22191531b19308c407f4d031323f1cec7e0f150f2852d473f7f",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "github": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "c57d48cefaf39352242f5a2d9fc028527647f37d3b9eca137354828244b0a910",
+      "treeSha256": "bfc1df4dfd3fb011875a1b50ef0128592be22d3768903478769b90660cd4d617",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "impeccable": {
+      "version": "4.1.3",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "61def9d52f58f49212a8c3d8a049082c58feca6e36a16c9e301e690976ccf97b",
+      "treeSha256": "eed1090d0ab51f1e9fae4b0d8b56f011be66733e69c99747c05e0f98ec819ef1",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "incident-response": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "0ee3fc4ce4bca200c60007c9f9c8e0297da963881fc8566d1fff62a93f290b48",
+      "treeSha256": "ccd8608cbf7b8b0c7e3c72c20866884638efcaa389f9eafc2c9516900e62da72",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "knowledge-base-update": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "9adc0ea3b5a84f8d0b8f3ed37239198d7a2608ae2ec0170dce94c55e38d16a5a",
+      "treeSha256": "c63ab6dd01f4cab6a16884bfe8b4b340cedd5831e39e43d3d8a649e2955c683b",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "project-context-primer": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "5e9e7fbf93d5f049cd93ebe5e78ca268eb2545c35c4cdb1f5abdd62e1286c2da",
+      "treeSha256": "048b37e997fc321e81777202c7ba530c7844d405998db142067094900d731076",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "prompt-enhancer": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "004fddcdb6d0e434c8ec8d9a58345964301d09238cdde2e9f3576e98627d4dc3",
+      "treeSha256": "e470a449887ac09e7f90b882efe6d16d8f86e846e6fda1ffb061d945c51d39a3",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "slides": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "2b90bdaf63f231919a01f4962f374ecd84af101a7e7545f8d9c68e049025accb",
+      "treeSha256": "742d1ce1378ab9302a9812b929bdefbd605ee068716b6bc75a065974aa3074a8",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.126Z"
+    },
+    "test-driven-execution": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "bffbe70b531fdca8b621429b9686da0381d90852d3fd137a86a25e9681764935",
+      "treeSha256": "ad5fe70de6908ef6da47e46edfdbf73dc1f20da1b84db0fb25e3aadf551581b9",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
+    },
+    "ui-styling": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "MIT",
+      "contentSha256": "f8b6c3832d2af51f67b3932e3c4a79bcd8a8596cc61ce1547a686fc951e5c62d",
+      "treeSha256": "c2b9e9d9f2de716bd680fab689a762c3c7bc14b07c0610825ba5d556a59994f6",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
+    },
+    "ui-ux-pro-max": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "305a7527fcb2f5b6e4129ab22cd839b5172d26df7f14d3324bfdec8fc1763560",
+      "treeSha256": "9ed819868808b18c8448a70c8640a80773688d94cf842cf2fc8c9a53e78cd596",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
+    },
+    "web-design-guidelines": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "f4647ca866a3accf763777f83e7682954f0187cd6bea7eea0399796652414e8f",
+      "treeSha256": "bb9c0f46dfaa38ca9a656748f3a055cd348eda19b97ecc721c46479eb87eefac",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
+    },
+    "writing-plans": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "316d0b7266c27c102cdb95e549d5b31e813406f384561485a82faf3176ac92f1",
+      "treeSha256": "d8b2cb23740c5e0a981d508b25eda88ddc9b5bc2f3a58e998708ce6d6cc3cf09",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
+    },
+    "skill-creator": {
+      "version": "1.0.0",
+      "upstreamUrl": "",
+      "commitSha": "",
+      "license": "Apache-2.0",
+      "contentSha256": "01a3d86bd86e967012d0991188cb63a2f6977fc2ebcd18c748f8f31e98428763",
+      "treeSha256": "0db7c86d12084fa32d4df5503b4aa4258f376f13b83b7917f54d7544dddd2537",
+      "capabilities": {
+        "scriptExecution": false,
+        "networkAccess": false,
+        "filesystemWrite": false
+      },
+      "auditStatus": "PASSED",
+      "lockedAt": "2026-10-16T16:06:32.127Z"
     }
   }
 }

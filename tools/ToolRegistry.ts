@@ -48,6 +48,10 @@ import { AlphaFoldTool } from './science/AlphaFoldTool.js';
 import { AlphaGenomeTool } from './science/AlphaGenomeTool.js';
 import { HumanProteinAtlasTool } from './science/HumanProteinAtlasTool.js';
 import { EncodeCcresTool } from './science/EncodeCcresTool.js';
+import { HuggingFaceHubTool } from './ai/HuggingFaceHubTool.js';
+import { LiteratureSearchTool } from './ai/LiteratureSearchTool.js';
+import { BrowserAutomationTool } from './web/BrowserAutomationTool.js';
+import { PyTorchModelBuilderTool } from './ai/PyTorchModelBuilderTool.js';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition<any, any>> = new Map();
@@ -113,6 +117,12 @@ export class ToolRegistry {
     this.register(new AlphaGenomeTool());
     this.register(new HumanProteinAtlasTool());
     this.register(new EncodeCcresTool());
+
+    // AI & Machine Learning Model Building Tools
+    this.register(new HuggingFaceHubTool());
+    this.register(new LiteratureSearchTool());
+    this.register(new BrowserAutomationTool());
+    this.register(new PyTorchModelBuilderTool());
   }
 
   register(tool: ToolDefinition<any, any>): void {
