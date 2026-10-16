@@ -35,6 +35,9 @@ import { DeveloperHabitService } from '../services/memory/DeveloperHabitService.
 import { ReproducerGate } from '../engine/reproducer/ReproducerGate.js';
 import { McpClientManager } from '../services/mcp/McpClientManager.js';
 import { AutonomousContinuationGuard } from '../engine/guards/AutonomousContinuationGuard.js';
+import { VerifyOnStopGuard } from '../engine/guards/VerifyOnStopGuard.js';
+import { RepetitionGuard } from '../engine/guards/RepetitionGuard.js';
+import { ContextMicroCompactor } from '../context/ContextMicroCompactor.js';
 import { SkillRegistry } from '../services/skills/SkillRegistry.js';
 import type { BaseProvider } from '../providers/BaseProvider.js';
 import { config } from '../config/index.js';
@@ -111,6 +114,9 @@ export class QueryEngine extends EventEmitter {
   private isExplorationPhase = true;
   private currentContextTokens = 0;
   private continuationGuard = new AutonomousContinuationGuard();
+  private verifyOnStopGuard = new VerifyOnStopGuard();
+  private repetitionGuard = new RepetitionGuard();
+  private contextMicroCompactor = new ContextMicroCompactor();
   private skillRegistry: SkillRegistry;
   private activeSkillName: string | null = null;
 
@@ -350,7 +356,7 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
   }
 
   private buildFullSystemContent(currentGoal?: string): string {
-    const availableSkills = this.skillRegistry.getSkillCatalog().map((s) => ({
+    const availableSkills = this.skillRegistry.getCompactCatalog().map((s) => ({
       name: s.name,
       description: s.description,
       tags: s.tags,
@@ -892,6 +898,11 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         if (event.type === 'text_delta') {
           assistantContent += event.delta;
           this.emit('text', event.delta);
+          const echoCheck = RepetitionGuard.isTextRepetitionDominated(assistantContent);
+          if (echoCheck.isEchoing) {
+            this.emit('verification', `[Repetition Guard]: Generative stream repetition detected. Halting runaway echo.`);
+            break;
+          }
         } else if (event.type === 'thought_delta') {
           assistantThought += event.delta;
           this.emit('thought', event.delta);
@@ -1047,6 +1058,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
       this.reconcileDanglingToolCalls();
       this.refreshSystemPrompt(effectivePrompt);
+      this.verifyOnStopGuard.reset();
+      this.repetitionGuard.reset();
 
       const isSurgicalTask = QueryEngine.isSurgicalFixOrTargetedPrompt(effectivePrompt);
       if (isSurgicalTask) {
@@ -1135,15 +1148,22 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           this.emit('prune');
         }
 
-        // 3. Trajectory Compression: Semantic Distillation of middle turns if token threshold is crossed
-        const compressionResult = TrajectoryCompressor.compressIfNeeded(
+        const activePlan = PlanManager.getActivePlan(this.sessionState.id);
+        const planSummaryStr = activePlan
+          ? `${activePlan.title}:\n${activePlan.steps.map((s) => `- [${s.status || 'pending'}] ${s.title}`).join('\n')}`
+          : undefined;
+
+        // 3. Multi-Tier Micro-Compaction & Trajectory Compression
+        const compactionResult = this.contextMicroCompactor.optimize(
           this.messages,
-          effectiveMaxTokens,
-          config.autoCompactThreshold
+          {
+            activeTasksSummary: planSummaryStr,
+            recentlyTouchedFiles: this.getSessionModifiedFiles(),
+          }
         );
-        if (compressionResult.compressed) {
-          this.messages = compressionResult.messages;
-          this.currentContextTokens = TokenCounter.estimateMessagesTokens(this.messages);
+        if (compactionResult.wasCompacted) {
+          this.messages = compactionResult.messages;
+          this.currentContextTokens = compactionResult.newTokens;
           this.emit('compress');
         }
 
@@ -1279,6 +1299,24 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           }
 
           const modifiedFiles = this.evidenceCollector.getModifiedFiles();
+
+          // Verify-On-Stop Guard: Check if code files were modified without fresh verification
+          const verifyDecision = this.verifyOnStopGuard.evaluate(modifiedFiles);
+          if (verifyDecision.shouldBlock && verifyDecision.nudgePrompt) {
+            this.emit(
+              'verification',
+              `[Verify-On-Stop Guard]: ${verifyDecision.unverifiedFiles.length} modified code file(s) require automated verification. Nudging agent...`
+            );
+            const autoVerifyMsg: UnifiedMessage = {
+              id: randomUUID(),
+              role: 'user',
+              content: verifyDecision.nudgePrompt,
+              timestamp: Date.now(),
+            };
+            this.messages.push(autoVerifyMsg);
+            continue; // Autonomous verification nudge
+          }
+
           const shouldVerifyTypecheck = modifiedFiles.length > 0 || this.sessionConfig.proofMode;
 
           if (shouldVerifyTypecheck) {
@@ -1295,6 +1333,8 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
               };
               this.messages.push(autoFeedbackMsg);
               continue; // Self-healing loop
+            } else if (typecheck.passed) {
+              this.verifyOnStopGuard.recordVerification();
             }
           }
 
@@ -1351,6 +1391,14 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
           consecutiveExploratoryTurns++;
         }
 
+        // Repetition Guard: Track tool signatures and detect cycles
+        for (const tc of pendingToolCalls) {
+          const repCheck = this.repetitionGuard.record(tc.name, tc.arguments as Record<string, unknown>);
+          if (repCheck.isLooping && repCheck.interventionPrompt) {
+            this.emit('verification', repCheck.interventionPrompt);
+          }
+        }
+
         const dispatchedResults = await ParallelToolDispatcher.dispatch(
           pendingToolCalls,
           this.toolRegistry,
@@ -1386,6 +1434,13 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             const targetPath = (args?.path || args?.filePath) as string | undefined;
             if (targetPath) {
               this.evidenceCollector.recordFileModification(targetPath);
+            }
+          } else if (!dr.isError && dr.toolCall.name === 'run_shell_command') {
+            const args = dr.toolCall.arguments as Record<string, unknown> | undefined;
+            const cmd = ((args?.command || args?.cmd || '') as string).toLowerCase();
+            const verificationKeywords = ['test', 'tsc', 'typecheck', 'lint', 'vitest', 'jest', 'pytest', 'cargo check', 'go test'];
+            if (verificationKeywords.some((kw) => cmd.includes(kw))) {
+              this.verifyOnStopGuard.recordVerification();
             }
           }
 

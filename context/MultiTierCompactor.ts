@@ -20,9 +20,13 @@ export class MultiTierCompactor {
   /**
    * Layer 1: Micro-compact per-turn tool results
    */
-  static applyMicroCompact(messages: UnifiedMessage[]): { messages: UnifiedMessage[]; report: CompactionReport } {
+  static applyMicroCompact(
+    messages: UnifiedMessage[],
+    preserveRecentTurns: number = 2,
+    maxToolResultLines: number = 12
+  ): { messages: UnifiedMessage[]; report: CompactionReport } {
     const originalTokens = TokenCounter.estimateMessagesTokens(messages);
-    const result = MicroCompactor.compact(messages, 3, 12);
+    const result = MicroCompactor.compact(messages, preserveRecentTurns, maxToolResultLines);
     const compactedTokens = TokenCounter.estimateMessagesTokens(result.compactedMessages);
 
     return {
