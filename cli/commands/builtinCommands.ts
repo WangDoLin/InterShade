@@ -25,6 +25,8 @@ import { config } from '../../config/index.js';
 import { swarmCommand } from './swarmCommand.js';
 import { McpClientManager } from '../../services/mcp/McpClientManager.js';
 import { RepoMapTool } from '../../tools/context/RepoMapTool.js';
+import { TaskManager } from '../../state/TaskManager.js';
+import { SerenaSemanticEngine } from '../../engine/semantic/SerenaSemanticEngine.js';
 
 
 export const reviewCommand: PromptCommand = {
@@ -1611,6 +1613,108 @@ export const repoMapCommand: LocalCommand = {
   }
 };
 
+export const tasksCommand: LocalCommand = {
+  name: 'tasks',
+  description: 'Display active task checklist and execution progress',
+  type: 'local',
+  aliases: ['todos', 'todo'],
+  execute: (ctx) => {
+    const sessionId = (ctx.sessionState?.id as string) || '';
+    if (!sessionId) {
+      return 'No active session found.';
+    }
+    const tasks = TaskManager.listTasks(sessionId);
+    if (tasks.length === 0) {
+      return 'No tasks currently registered in session. Use task_manage to create tasks or ask the agent to break down a plan into steps.';
+    }
+    const completed = tasks.filter((t) => t.status === 'completed').length;
+    const lines = [
+      `Session Task Checklist (${completed}/${tasks.length} completed):`,
+      '------------------------------------------------------------',
+    ];
+    for (const t of tasks) {
+      const mark = t.status === 'completed' ? '[✔]' : t.status === 'in_progress' ? '[▶]' : '[○]';
+      const active = t.activeForm ? ` (${t.activeForm})` : '';
+      lines.push(`${mark} #${t.id}: ${t.subject} [${t.status.toUpperCase()}]${active}`);
+      if (t.description && t.description !== t.subject) {
+        lines.push(`     ${t.description}`);
+      }
+    }
+    return lines.join('\n');
+  },
+};
+
+export const interviewCommand: PromptCommand = {
+  name: 'interview',
+  description: 'Trigger interactive Socratic clarification interview before writing code',
+  type: 'prompt',
+  aliases: ['grill-me', 'clarify'],
+  getPrompt: (ctx) => {
+    const topic = ctx.args.length > 0 ? ctx.args.join(' ') : 'the current task';
+    return [
+      `Please conduct an interactive Socratic clarification interview with me regarding ${topic}.`,
+      'Guidelines:',
+      '1. Do not start coding or editing files yet.',
+      '2. Identify ambiguities, edge cases, or architecture decisions that need alignment.',
+      '3. Use the `ask_user` tool with structured multiple-choice options to ask me one or two targeted questions at a time.',
+      '4. Once we align, summarize the agreed specification and implementation steps.'
+    ].join('\n');
+  },
+};
+
+export const lintCommand: LocalCommand = {
+  name: 'lint',
+  description: 'Run TypeScript compiler and syntax diagnostics on workspace files',
+  type: 'local',
+  aliases: ['diagnostics', 'diag'],
+  execute: (ctx) => {
+    const targetFile = ctx.args[0];
+    if (targetFile) {
+      const resolved = path.isAbsolute(targetFile) ? targetFile : path.join(ctx.cwd, targetFile);
+      const diags = SerenaSemanticEngine.getDiagnostics(resolved);
+      if (diags.length === 0) {
+        return `[LINT]: No errors or warnings found in ${targetFile}.`;
+      }
+      return [
+        `[LINT]: ${diags.length} issue(s) found in ${targetFile}:`,
+        ...diags.map((d) => `  - [${d.category.toUpperCase()} TS${d.code}] Line ${d.line}:${d.character} - ${d.message}`)
+      ].join('\n');
+    }
+
+    try {
+      const gitOut = execSync('git status --porcelain', { cwd: ctx.cwd, encoding: 'utf-8', timeout: 3000 });
+      const modifiedFiles = gitOut
+        .split('\n')
+        .map((l) => l.trim().slice(3))
+        .filter((f) => f.endsWith('.ts') || f.endsWith('.tsx') || f.endsWith('.js') || f.endsWith('.jsx'));
+
+      if (modifiedFiles.length === 0) {
+        return '[LINT]: No modified code files detected in git working tree to lint.';
+      }
+
+      const reportLines: string[] = [`[LINT]: Inspecting ${modifiedFiles.length} modified file(s):`];
+      let totalIssues = 0;
+      for (const f of modifiedFiles.slice(0, 10)) {
+        const resolved = path.join(ctx.cwd, f);
+        const diags = SerenaSemanticEngine.getDiagnostics(resolved);
+        if (diags.length > 0) {
+          totalIssues += diags.length;
+          reportLines.push(`\n📄 ${f} (${diags.length} issue(s)):`);
+          for (const d of diags.slice(0, 5)) {
+            reportLines.push(`   - [${d.category.toUpperCase()} TS${d.code}] Line ${d.line}:${d.character} - ${d.message}`);
+          }
+        }
+      }
+      if (totalIssues === 0) {
+        return `[LINT]: All ${modifiedFiles.length} modified files passed compiler diagnostics with 0 issues!`;
+      }
+      return reportLines.join('\n');
+    } catch {
+      return '[LINT]: Please specify a target file: /lint <filePath>';
+    }
+  },
+};
+
 export function registerBuiltinCommands(registry: CommandRegistry): void {
   // Claude Code core commands
   registry.register(reviewCommand);
@@ -1643,6 +1747,9 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(rememberCommand);
   registry.register(mcpCommand);
   registry.register(repoMapCommand);
+  registry.register(tasksCommand);
+  registry.register(interviewCommand);
+  registry.register(lintCommand);
   registry.register(skillsCommand);
   registry.register(worktreeCommand);
   registry.register(gatewayCommand);
