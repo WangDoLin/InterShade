@@ -27,6 +27,7 @@ import { McpClientManager } from '../../services/mcp/McpClientManager.js';
 import { RepoMapTool } from '../../tools/context/RepoMapTool.js';
 import { TaskManager } from '../../state/TaskManager.js';
 import { SerenaSemanticEngine } from '../../engine/semantic/SerenaSemanticEngine.js';
+import { TaskScheduler } from '../../services/scheduler/TaskScheduler.js';
 
 
 export const reviewCommand: PromptCommand = {
@@ -1715,6 +1716,45 @@ export const lintCommand: LocalCommand = {
   },
 };
 
+export const scheduleCommand: LocalCommand = {
+  name: 'schedule',
+  description: 'Manage background timers and cron schedules for the agent',
+  type: 'local',
+  execute: async (ctx) => {
+    const scheduler = TaskScheduler.getInstance();
+    const args = ctx.args;
+
+    if (args.length === 0 || args[0] === 'list') {
+      const tasks = scheduler.listTasks();
+      if (tasks.length === 0) {
+        return '[SCHEDULE]: No scheduled timers or cron jobs currently active.\nUsage:\n  /schedule in <seconds>s <prompt>\n  /schedule cron "<expression>" <prompt>\n  /schedule cancel <taskId>';
+      }
+      const lines = tasks.map((t) => {
+        const nextIn = Math.max(0, Math.round((t.nextRunAt - Date.now()) / 1000));
+        return `- **${t.id}** [${t.type}] Status: ${t.status} | In: ${nextIn}s | Prompt: "${t.prompt}"`;
+      });
+      return `### Active Schedules (${tasks.length}):\n${lines.join('\n')}`;
+    }
+
+    if (args[0] === 'cancel' && args[1]) {
+      const ok = scheduler.cancel(args[1]);
+      return ok ? `[SCHEDULE]: Cancelled task ${args[1]}` : `[SCHEDULE]: Task ${args[1]} not found.`;
+    }
+
+    if (args[0] === 'in' && args[1]) {
+      let seconds = parseInt(args[1].replace(/s$/, ''), 10);
+      if (args[1].endsWith('m')) {
+        seconds = parseInt(args[1].replace(/m$/, ''), 10) * 60;
+      }
+      const prompt = args.slice(2).join(' ') || 'Scheduled reminder';
+      const task = scheduler.scheduleTimer({ durationSeconds: seconds, prompt });
+      return `[SCHEDULE]: Timer scheduled for ${seconds}s (Task ID: ${task.id}). Prompt: "${prompt}"`;
+    }
+
+    return '[SCHEDULE]: Usage: /schedule in <seconds/minutes> <prompt> | /schedule cancel <taskId> | /schedule list';
+  },
+};
+
 export function registerBuiltinCommands(registry: CommandRegistry): void {
   // Claude Code core commands
   registry.register(reviewCommand);
@@ -1750,6 +1790,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(tasksCommand);
   registry.register(interviewCommand);
   registry.register(lintCommand);
+  registry.register(scheduleCommand);
   registry.register(skillsCommand);
   registry.register(worktreeCommand);
   registry.register(gatewayCommand);
