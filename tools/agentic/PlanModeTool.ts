@@ -3,36 +3,104 @@ import { BaseTool } from '../BaseTool.js';
 import type { ToolExecutionContext } from '../../types/index.js';
 import { PlanManager, type PlanStep } from '../../state/PlanManager.js';
 
-const PlanStepSchema = z.object({
-  id: z.string().optional().describe('Step ID or number (e.g. "1", "2")'),
-  title: z.string().describe('Short title of the step'),
-  description: z.string().optional().describe('Details of what needs to be implemented or investigated'),
-  targetFiles: z.array(z.string()).optional().describe('Target files affected by this step'),
-  dependencies: z.array(z.string()).optional().describe('Prior step IDs required before this step'),
+export interface PlanStepInput {
+  id?: string;
+  title: string;
+  description?: string;
+  targetFiles?: string[];
+  dependencies?: string[];
+  changeType?: 'new' | 'modified' | 'unchanged' | 'removed';
+}
+
+const PlanStepObjectSchema = z.object({
+  id: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined ? String(v) : undefined)),
+  title: z.string().optional(),
+  name: z.string().optional(),
+  step: z.union([z.string(), z.number()]).optional().transform((v) => (v !== undefined ? String(v) : undefined)),
+  text: z.string().optional(),
+  summary: z.string().optional(),
+  description: z.string().optional(),
+  details: z.string().optional(),
+  targetFiles: z
+    .union([z.array(z.string()), z.string().transform((s) => [s])])
+    .optional(),
+  dependencies: z
+    .union([
+      z.array(z.union([z.string(), z.number()]).transform((v) => String(v))),
+      z.string().transform((s) => [s]),
+    ])
+    .optional(),
   changeType: z
-    .enum(['new', 'modified', 'unchanged', 'removed'])
-    .optional()
-    .describe('Change classification relative to previous plan revision'),
+    .union([
+      z.enum(['new', 'modified', 'unchanged', 'removed']),
+      z.string().transform((ct) => {
+        const lower = ct.toLowerCase().trim();
+        if (['new', 'add', 'create', 'added'].includes(lower)) return 'new';
+        if (['modified', 'mod', 'update', 'edit', 'changed'].includes(lower)) return 'modified';
+        if (['removed', 'delete', 'del'].includes(lower)) return 'removed';
+        return 'unchanged';
+      }),
+    ])
+    .optional(),
 });
 
-const PlanModeInputSchema = z.object({
+const PlanStepItemSchema: z.ZodType<PlanStepInput, any, any> = z.union([
+  z.string().transform((str): PlanStepInput => ({
+    title: str,
+    description: str,
+  })),
+  PlanStepObjectSchema.transform((val): PlanStepInput => {
+    const res: PlanStepInput = {
+      title: val.title || val.name || val.summary || val.text || (val.step ? `Step ${val.step}` : 'Plan Step'),
+    };
+    const idVal = val.id ?? val.step;
+    if (idVal !== undefined) res.id = idVal;
+    const descVal = val.description || val.details || val.text || val.summary || val.title;
+    if (descVal !== undefined) res.description = descVal;
+    if (val.targetFiles !== undefined) res.targetFiles = val.targetFiles;
+    if (val.dependencies !== undefined) res.dependencies = val.dependencies;
+    if (val.changeType !== undefined) res.changeType = val.changeType as any;
+    return res;
+  }),
+]);
+
+export interface PlanModeInput {
+  action?: 'enter' | 'exit' | 'create' | 'update' | 'view' | 'get';
+  planTitle?: string;
+  planSummary?: string;
+  planSteps?: PlanStepInput[];
+  changesDescription?: string;
+  acceptanceCriteria?: string[];
+}
+
+const PlanModeInputSchema: z.ZodType<PlanModeInput, any, any> = z.object({
   action: z
-    .enum(['enter', 'exit', 'create', 'update', 'view', 'get'])
-    .describe('Action: "enter" or "exit" Plan Mode; "create" a new plan; "update" to merge additions/modifications into existing plan; "view" or "get" to inspect active plan'),
-  planTitle: z.string().optional().describe('Title or primary objective of the plan'),
-  planSummary: z.string().optional().describe('Summary of the plan or exit rationale'),
-  planSteps: z.array(PlanStepSchema).optional().describe('Ordered atomic plan steps'),
+    .union([
+      z.enum(['enter', 'exit', 'create', 'update', 'view', 'get']),
+      z.string().transform((act) => {
+        const lower = act.toLowerCase().trim();
+        if (['enter', 'on', 'enable', 'start', 'in'].includes(lower)) return 'enter';
+        if (['exit', 'off', 'disable', 'done', 'finish', 'complete'].includes(lower)) return 'exit';
+        if (['create', 'plan', 'roadmap', 'set', 'save', 'propose', 'draft', 'new', 'generate'].includes(lower)) return 'create';
+        if (['update', 'merge', 'edit', 'modify', 'add', 'append'].includes(lower)) return 'update';
+        if (['view', 'get', 'show', 'status', 'inspect', 'read', 'list'].includes(lower)) return 'view';
+        return 'create';
+      }),
+    ])
+    .optional()
+    .default('create'),
+  planTitle: z.union([z.string(), z.number().transform(String)]).optional().describe('Title or primary objective of the plan'),
+  planSummary: z.union([z.string(), z.number().transform(String)]).optional().describe('Summary of the plan or exit rationale'),
+  planSteps: z.array(PlanStepItemSchema).optional().describe('Ordered atomic plan steps'),
   changesDescription: z
     .string()
     .optional()
     .describe('Explanation of what is being added or modified relative to the previous plan revision'),
   acceptanceCriteria: z
-    .array(z.string())
+    .union([z.array(z.string()), z.string().transform((s) => [s])])
     .optional()
     .describe('Verification criteria and test requirements for this plan'),
 });
-
-type PlanModeInput = z.infer<typeof PlanModeInputSchema>;
 
 export class PlanModeTool extends BaseTool<PlanModeInput, string> {
   readonly name = 'plan_mode';
@@ -74,13 +142,20 @@ export class PlanModeTool extends BaseTool<PlanModeInput, string> {
       }
 
       case 'create': {
-        if (!args.planSteps || args.planSteps.length === 0) {
-          throw new Error('Field "planSteps" is required when action="create".');
+        let steps = args.planSteps as PlanStep[] | undefined;
+        if (!steps || steps.length === 0) {
+          steps = [
+            {
+              id: '1',
+              title: args.planTitle || 'Execute Architectural Objective',
+              description: args.planSummary || 'Formulate and execute implementation roadmap',
+            },
+          ];
         }
         const plan = PlanManager.createOrReplacePlan(sessionId, {
           title: args.planTitle || 'Architectural Implementation Plan',
           overview: args.planSummary,
-          steps: args.planSteps as PlanStep[],
+          steps,
           acceptanceCriteria: args.acceptanceCriteria,
         });
 

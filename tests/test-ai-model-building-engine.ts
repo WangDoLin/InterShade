@@ -15,8 +15,8 @@ async function runTestSuite() {
   console.log('================================================================\n');
 
   const mockContext: ToolExecutionContext = {
+    sessionId: 'test-session-ml',
     cwd: process.cwd(),
-    sessionConfig: {} as any,
     permissionMode: 'auto',
     onProgress: (msg: string) => console.log('  [TELEMETRY]:', msg),
   };

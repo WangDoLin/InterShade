@@ -118,7 +118,15 @@ export class ToolExecutionGate {
 
       // 4. Schema conformance validation via Zod
       if (toolDef.inputSchema) {
-        const parseResult = toolDef.inputSchema.safeParse(toolCall.arguments);
+        let args = toolCall.arguments;
+        if (typeof args === 'string') {
+          try {
+            args = JSON.parse(args);
+          } catch {
+            // Keep original if not JSON
+          }
+        }
+        const parseResult = toolDef.inputSchema.safeParse(args);
         if (!parseResult.success) {
           throw new ProviderError({
             code: 'INVALID_REQUEST',
@@ -127,6 +135,7 @@ export class ToolExecutionGate {
             rawError: parseResult.error,
           });
         }
+        toolCall.arguments = parseResult.data;
       }
     }
   }

@@ -34,7 +34,7 @@ export interface UnifiedMessage {
 export interface ToolDefinition<TInput = Record<string, unknown>, TOutput = unknown> {
   name: string;
   description: string;
-  inputSchema: z.ZodType<TInput>;
+  inputSchema: z.ZodType<TInput, any, any>;
   isReadOnly: boolean;
   isDestructive: boolean;
   requiresPermission: boolean;

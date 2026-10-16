@@ -8,7 +8,7 @@ export abstract class BaseTool<TInput = Record<string, unknown>, TOutput = unkno
   implements ToolDefinition<TInput, TOutput> {
   abstract readonly name: string;
   abstract readonly description: string;
-  abstract readonly inputSchema: z.ZodType<TInput>;
+  abstract readonly inputSchema: z.ZodType<TInput, any, any>;
   readonly isReadOnly: boolean = false;
   readonly isDestructive: boolean = false;
   readonly requiresPermission: boolean = false;
