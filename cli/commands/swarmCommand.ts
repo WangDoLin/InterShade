@@ -87,12 +87,30 @@ export const swarmCommand: LocalCommand = {
       if (!goal) {
         return 'Usage: /swarm run <overall project goal>';
       }
-      // Decompose into 2-3 standard roles: Architect/Backend/Frontend/Tester
-      promptList = [
-        `[Backend Role] Thiết kế và triển khai core services/API cho mục tiêu: ${goal}`,
-        `[Frontend Role] Thiết kế và triển khai giao diện components/UI cho mục tiêu: ${goal}`,
-        `[Tester Role] Viết unit tests và kịch bản kiểm thử toàn diện cho mục tiêu: ${goal}`,
-      ];
+      const lowerGoal = goal.toLowerCase();
+      const isBio =
+        lowerGoal.includes('protein') ||
+        lowerGoal.includes('gene') ||
+        lowerGoal.includes('alphafold') ||
+        lowerGoal.includes('variant') ||
+        lowerGoal.includes('encode') ||
+        lowerGoal.includes('sinh hoc') ||
+        lowerGoal.includes('sinh học');
+
+      if (isBio) {
+        promptList = [
+          `[Bioinformatics Role] Tra cứu AlphaFold 3D structure, PAE analysis, AlphaGenome và HPA cho: ${goal}`,
+          `[Backend Role] Triển khai pipeline dữ liệu và tích hợp API xử lý cho: ${goal}`,
+          `[Tester Role] Kiểm thử các kịch bản tra cứu và tính đúng đắn cho: ${goal}`,
+        ];
+      } else {
+        // Decompose into standard roles: Backend/Frontend/Tester
+        promptList = [
+          `[Backend Role] Thiết kế và triển khai core services/API cho mục tiêu: ${goal}`,
+          `[Frontend Role] Thiết kế và triển khai giao diện components/UI cho mục tiêu: ${goal}`,
+          `[Tester Role] Viết unit tests và kịch bản kiểm thử toàn diện cho mục tiêu: ${goal}`,
+        ];
+      }
     } else if (isParallelMode) {
       const fullArgs = ctx.args.join(' ');
       promptList = fullArgs.split('|').map((p) => p.trim()).filter(Boolean);

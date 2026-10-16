@@ -7,7 +7,17 @@ export type SwarmRole =
   | 'frontend'
   | 'tester'
   | 'reviewer'
+  | 'bioinformatics'
   | 'general';
+
+export interface SubtaskSpec {
+  id: string;
+  role: SwarmRole;
+  title: string;
+  prompt: string;
+  scope?: string[];
+  dependsOn?: string[];
+}
 
 export type SwarmSessionStatus =
   | 'idle'

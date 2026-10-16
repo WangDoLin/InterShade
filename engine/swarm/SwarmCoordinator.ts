@@ -98,6 +98,25 @@ export class SwarmCoordinator extends EventEmitter {
       };
     }
 
+    if (
+      lower.includes('protein') ||
+      lower.includes('alphafold') ||
+      lower.includes('genome') ||
+      lower.includes('gene') ||
+      lower.includes('dna') ||
+      lower.includes('rna') ||
+      lower.includes('variant') ||
+      lower.includes('encode') ||
+      lower.includes('sinh hoc') ||
+      lower.includes('sinh học') ||
+      lower.includes('bio')
+    ) {
+      return {
+        role: 'bioinformatics',
+        scope: ['data/**', 'results/**', 'analysis/**', 'scripts/**'],
+      };
+    }
+
     return {
       role: 'general',
       scope: ['*'],

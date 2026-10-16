@@ -43,6 +43,11 @@ import {
   OrcaWorktreeDiffTool,
   OrcaWorktreeCleanupTool,
 } from './orchestration/OrchestrationTools.js';
+import { DecomposeAndDispatchTool } from './agentic/DecomposeAndDispatchTool.js';
+import { AlphaFoldTool } from './science/AlphaFoldTool.js';
+import { AlphaGenomeTool } from './science/AlphaGenomeTool.js';
+import { HumanProteinAtlasTool } from './science/HumanProteinAtlasTool.js';
+import { EncodeCcresTool } from './science/EncodeCcresTool.js';
 
 export class ToolRegistry {
   private tools: Map<string, ToolDefinition<any, any>> = new Map();
@@ -94,11 +99,20 @@ export class ToolRegistry {
     this.register(new OrcaWorktreeDiffTool());
     this.register(new OrcaWorktreeCleanupTool());
 
+    // Subagent Orchestrator & Multi-Agent Concurrency
+    this.register(new DecomposeAndDispatchTool());
+
     // Deferred tools (activated on-demand)
     this.register(new SubagentTool());
     this.register(new RepomixTool());
     this.register(new SemanticSearchTool());
     this.register(new WebFetchTool());
+
+    // Biological Science Tools (activated on-demand)
+    this.register(new AlphaFoldTool());
+    this.register(new AlphaGenomeTool());
+    this.register(new HumanProteinAtlasTool());
+    this.register(new EncodeCcresTool());
   }
 
   register(tool: ToolDefinition<any, any>): void {
