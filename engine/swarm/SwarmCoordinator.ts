@@ -91,6 +91,35 @@ export class SwarmCoordinator extends EventEmitter {
       };
     }
 
+    if (
+      lower.includes('security') ||
+      lower.includes('cve') ||
+      lower.includes('dependency') ||
+      lower.includes('license') ||
+      lower.includes('bao mat') ||
+      lower.includes('bảo mật')
+    ) {
+      return {
+        role: 'security',
+        scope: ['package.json', 'requirements.txt', 'pyproject.toml', '.agent/audits/**', 'security/**'],
+      };
+    }
+
+    if (
+      lower.includes('paper') ||
+      lower.includes('openalex') ||
+      lower.includes('arxiv') ||
+      lower.includes('literature') ||
+      lower.includes('sota') ||
+      lower.includes('nghien cuu') ||
+      lower.includes('nghiên cứu')
+    ) {
+      return {
+        role: 'research',
+        scope: ['docs/**', 'research/**', 'references/**'],
+      };
+    }
+
     if (lower.includes('review') || lower.includes('audit') || lower.includes('kiem tra')) {
       return {
         role: 'reviewer',

@@ -128,11 +128,13 @@ export class MultiSessionPool extends EventEmitter {
 
     const sessionConfig: SessionConfig = {
       ...(template || {}),
+      sessionId: id,
       cwd: worktreePath,
       provider: template?.provider || 'gemini',
       model: template?.model || 'gemini-2.5-flash',
       permissionMode: template?.permissionMode || 'default',
       maxTokens: template?.maxTokens || 8192,
+      resumeSession: false,
     };
 
     const secondaryEngine = new QueryEngine(sessionConfig);
