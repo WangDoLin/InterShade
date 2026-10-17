@@ -68,7 +68,7 @@ export function getDatabase(): any {
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       session_id TEXT NOT NULL,
       subject TEXT NOT NULL,
       description TEXT NOT NULL,
@@ -79,6 +79,7 @@ export function getDatabase(): any {
       metadata TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
+      PRIMARY KEY (id, session_id),
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
 
@@ -153,6 +154,37 @@ export function getDatabase(): any {
     CREATE INDEX IF NOT EXISTS idx_trajectories_session ON trajectories(session_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_trajectories_task ON trajectories(task_id);
   `);
+
+  // Ensure tasks table has composite primary key (id, session_id) so each session has independent task IDs (#1, #2...)
+  try {
+    const tableInfo = db.prepare('PRAGMA table_info(tasks)').all() as Array<{ name: string; pk: number }>;
+    const pkCols = tableInfo.filter((c) => c.pk > 0);
+    if (pkCols.length === 1 && pkCols[0].name === 'id') {
+      db.exec(`
+        CREATE TABLE tasks_migrated (
+          id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          description TEXT NOT NULL,
+          status TEXT NOT NULL,
+          active_form TEXT,
+          blocks TEXT NOT NULL,
+          blocked_by TEXT NOT NULL,
+          metadata TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          PRIMARY KEY (id, session_id),
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+        INSERT OR IGNORE INTO tasks_migrated SELECT * FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_migrated RENAME TO tasks;
+        CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(session_id, created_at);
+      `);
+    }
+  } catch {
+    // Non-blocking migration
+  }
 
   dbInstance = db;
   return db;

@@ -31,10 +31,12 @@ export class TaskManager {
     return new TaskGraph(tasks);
   }
 
-  static getNextTaskId(_sessionId?: string): string {
+  static getNextTaskId(sessionId?: string): string {
     const db = getDatabase();
-    const stmt = db.prepare('SELECT id FROM tasks');
-    const rows = stmt.all() as { id: string }[];
+    const stmt = sessionId
+      ? db.prepare('SELECT id FROM tasks WHERE session_id = ?')
+      : db.prepare('SELECT id FROM tasks');
+    const rows = (sessionId ? stmt.all(sessionId) : stmt.all()) as { id: string }[];
     let maxId = 0;
     for (const row of rows) {
       const num = parseInt(row.id, 10);
@@ -65,6 +67,64 @@ export class TaskManager {
     };
 
     // Validate with graph to prevent cycles
+    graph.addTask(task);
+
+    const db = getDatabase();
+    const stmt = db.prepare(`
+      INSERT INTO tasks (
+        id, session_id, subject, description, status,
+        active_form, blocks, blocked_by, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      task.id,
+      sessionId,
+      task.subject,
+      task.description,
+      task.status,
+      task.activeForm || null,
+      JSON.stringify(task.blocks),
+      JSON.stringify(task.blockedBy),
+      task.metadata ? JSON.stringify(task.metadata) : null,
+      task.createdAt,
+      task.updatedAt
+    );
+
+    taskEvents.emit('change', sessionId);
+    return task;
+  }
+
+  static createTaskWithId(sessionId: string, input: Partial<TaskItem> & { id: string; subject: string }): TaskItem {
+    const graph = this.getGraph(sessionId);
+    const existing = graph.getTask(input.id);
+    if (existing) {
+      return this.updateTask(sessionId, input.id, {
+        subject: input.subject,
+        description: input.description,
+        status: input.status,
+        activeForm: input.activeForm,
+        blocks: input.blocks,
+        blockedBy: input.blockedBy,
+        metadata: input.metadata,
+      });
+    }
+
+    const now = Date.now();
+    const task: TaskItem = {
+      id: input.id,
+      subject: input.subject,
+      description: input.description || input.subject,
+      status: input.status || 'pending',
+      activeForm: input.activeForm,
+      owner: input.owner,
+      blocks: input.blocks || [],
+      blockedBy: input.blockedBy || [],
+      metadata: input.metadata,
+      createdAt: input.createdAt || now,
+      updatedAt: now,
+    };
+
     graph.addTask(task);
 
     const db = getDatabase();
@@ -165,8 +225,8 @@ export class TaskManager {
 
   static clearCompletedTasks(sessionId: string): number {
     const db = getDatabase();
-    const stmt = db.prepare('DELETE FROM tasks WHERE session_id = ? AND status = "completed"');
-    const res = stmt.run(sessionId);
+    const stmt = db.prepare('DELETE FROM tasks WHERE session_id = ? AND status = ?');
+    const res = stmt.run(sessionId, 'completed');
     taskEvents.emit('change', sessionId);
     return res.changes;
   }

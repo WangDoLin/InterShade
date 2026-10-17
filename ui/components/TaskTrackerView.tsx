@@ -27,17 +27,21 @@ export const TaskTrackerView: React.FC<TaskTrackerViewProps> = ({
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
   const inProgressTask = tasks.find((t) => t.status === 'in_progress');
   const totalCount = tasks.length;
-  const percentage = Math.round((completedCount / totalCount) * 100);
+  const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   const progressBar = renderProgressBar(completedCount, totalCount, 12);
 
-  // If collapsed or many tasks, limit displayed items to active context
-  const MAX_DISPLAY = 5;
-  const displayTasks =
-    tasks.length > MAX_DISPLAY && collapsed
-      ? tasks.filter((t) => t.status === 'in_progress' || t.status === 'pending').slice(0, 3)
-      : tasks.slice(0, MAX_DISPLAY);
+  // Active (uncompleted) tasks: when a task is ticked (completed), it disappears from the active view
+  const activeTasks = tasks.filter((t) => t.status !== 'completed');
 
-  const hiddenCount = tasks.length - displayTasks.length;
+  // When all tasks are complete, dismiss the checklist completely
+  if (activeTasks.length === 0) {
+    return null;
+  }
+
+  // Limit displayed items to remaining active context
+  const MAX_DISPLAY = 5;
+  const displayTasks = activeTasks.slice(0, MAX_DISPLAY);
+  const hiddenCount = activeTasks.length - displayTasks.length;
 
   return (
     <Box

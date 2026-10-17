@@ -1,4 +1,5 @@
 import { getDatabase } from './Database.js';
+import { TaskManager } from './TaskManager.js';
 
 export type PlanStepChangeType = 'new' | 'modified' | 'unchanged' | 'removed';
 
@@ -141,6 +142,31 @@ export class PlanManager {
       );
     } catch (err) {
       // In-memory cache still holds state if database write fails
+    }
+
+    try {
+      this.syncToTaskManager(plan);
+    } catch {
+      // Non-blocking sync to TaskManager
+    }
+  }
+
+  /**
+   * Synchronizes active plan steps to TaskManager so TaskTrackerView and tasks commands are immediately updated.
+   */
+  private static syncToTaskManager(plan: ActivePlan): void {
+    if (!plan.sessionId || !plan.steps || plan.steps.length === 0) return;
+
+    for (const step of plan.steps) {
+      const stepStatus = step.status || 'pending';
+      TaskManager.createTaskWithId(plan.sessionId, {
+        id: step.id,
+        subject: step.title,
+        description: step.description || step.title,
+        status: stepStatus,
+        blocks: [],
+        blockedBy: step.dependencies || [],
+      });
     }
   }
 
@@ -482,12 +508,37 @@ export class PlanManager {
         if (currentStep && currentStep.title) {
           steps.push(currentStep as PlanStep);
         }
+
+        let rawTitle = stepMatch[2].trim();
+        let status: 'pending' | 'in_progress' | 'completed' = 'pending';
+
+        // Check for completed markers e.g. [x], [X], [✔], [Completed], [Done], [Hoàn thành]
+        if (
+          /\[(?:x|X|✔|v|V|completed|done|hoàn thành|finished)\]/i.test(line) ||
+          /\((?:completed|done|hoàn thành|finished)\)/i.test(line) ||
+          /\[completed\]/i.test(rawTitle) ||
+          /\[x\]/i.test(rawTitle)
+        ) {
+          status = 'completed';
+        } else if (
+          /\[(?:in_progress|doing|đang thực hiện|running|▶|\/)\]/i.test(line) ||
+          /\((?:in_progress|doing|running)\)/i.test(line)
+        ) {
+          status = 'in_progress';
+        }
+
+        // Clean rawTitle from status tags
+        rawTitle = rawTitle
+          .replace(/\[(?:x|X|✔|v|V|completed|done|hoàn thành|finished|in_progress|doing|running)\]/gi, '')
+          .replace(/\((?:completed|done|hoàn thành|finished|in_progress|doing|running)\)/gi, '')
+          .trim();
+
         currentStep = {
           id: stepMatch[1],
-          title: stepMatch[2].trim(),
+          title: rawTitle,
           targetFiles: [],
           dependencies: [],
-          status: 'pending',
+          status,
         };
         currentSection = 'steps';
         continue;
