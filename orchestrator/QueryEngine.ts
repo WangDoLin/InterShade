@@ -27,6 +27,7 @@ import { VerificationEvidenceCollector } from '../engine/VerificationEvidenceCol
 import { ProofEngine } from '../engine/verification/ProofEngine.js';
 import path from 'path';
 import { PlanManager } from '../state/PlanManager.js';
+import { TaskManager } from '../state/TaskManager.js';
 import { ModelRouter } from './ModelRouter.js';
 import { ModelRegistry } from './ModelRegistry.js';
 import { FtsMemoryService } from '../services/memory/FtsMemoryService.js';
@@ -314,7 +315,15 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 - To create files: use \`file_write\`.
 - To search files: use \`glob_find\` (never find, ls in shell).
 - To search file contents: use \`grep_search\` (never grep, rg in shell).
+- To track multi-step workflow & checklist: use \`task_manage\` (create, update status to 'in_progress' or 'completed').
 - Reserve \`run_shell_command\` exclusively for commands that require true shell execution (builds, tests, package installation, git).
+
+# Task Checklist & Progress Tracking Protocol
+- When executing a multi-step objective or plan:
+  1. Break down the work and register steps in the task checklist using \`task_manage\` (action="create") or \`plan_mode\`.
+  2. Before starting a step, update the task to status="in_progress" with activeForm describing what you are doing (e.g. activeForm="Writing unit test suite").
+  3. CRITICAL: Immediately upon finishing and verifying each step, mark it as completed using \`task_manage\` (action="update", taskId="<id>", status="completed").
+  4. Once ticked, completed tasks disappear from the active tracker view, giving the user a clear picture of remaining work.
 
 # Architectural Planning & Incremental Plan Merging Protocol
 - When asked to plan, formulate an architectural blueprint, or operate in Plan Mode:
@@ -471,6 +480,21 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
 
   getSessionState(): SessionState {
     return this.sessionState;
+  }
+
+  /**
+   * Sets Maxing Mode to enable unconstrained reasoning budgets and department swarming
+   */
+  public setMaxingMode(enabled: boolean, budget?: number): void {
+    const targetBudget = budget || 16384;
+    this.sessionConfig.maxingMode = enabled;
+    this.sessionConfig.maxingBudget = targetBudget;
+    this.sessionState.maxingMode = enabled;
+    this.sessionState.maxingBudget = targetBudget;
+    if (enabled) {
+      this.sessionConfig.thinkingBudget = targetBudget;
+      this.sessionState.thinkingBudget = targetBudget;
+    }
   }
 
   getMessages(): UnifiedMessage[] {
@@ -1198,7 +1222,10 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
         // - In multi-step intermediate tool turns (turnCount > 1), clamp to 1024 tokens to eliminate idle thinking delay between tool steps.
         // - On initial turn (turnCount === 1), retain full thinking budget for deep architectural reasoning.
         let effectiveThinkingBudget = this.sessionConfig.thinkingBudget;
-        if (this.sessionConfig.speedMode === 'fast') {
+        if (this.sessionConfig.maxingMode) {
+          // Maxing Mode: unconstrained deep deliberation across all turns (up to 32k)
+          effectiveThinkingBudget = this.sessionConfig.maxingBudget || 16384;
+        } else if (this.sessionConfig.speedMode === 'fast') {
           effectiveThinkingBudget = 0;
         } else if (turnCount > 1 && effectiveThinkingBudget && effectiveThinkingBudget > 1024) {
           effectiveThinkingBudget = 1024;
@@ -1533,6 +1560,18 @@ If you can say it in one sentence, don't use three. Prefer short, direct sentenc
             });
           }
         }
+      }
+
+      // Auto-resolve any tasks left in in_progress if the prompt turn completed naturally
+      try {
+        const inProgressTasks = TaskManager.listTasks(this.sessionState.id).filter(
+          (t) => t.status === 'in_progress'
+        );
+        for (const t of inProgressTasks) {
+          TaskManager.updateTask(this.sessionState.id, t.id, { status: 'completed' });
+        }
+      } catch {
+        // Non-blocking
       }
 
       this.emit('done', finalAssistantResponse);

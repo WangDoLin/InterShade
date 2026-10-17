@@ -76,6 +76,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       setSessionState({ ...tab.queryEngine.getSessionState() });
       setContextTokens(tab.queryEngine.getContextTokens());
       setIsBusy(tab.status === 'running');
+      setSessionTasks(TaskManager.listTasks(tab.queryEngine.getSessionState().id));
       setViewingTurnIndex(null);
     };
 
@@ -345,14 +346,11 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       setSessionState({ ...activeEngine.getSessionState() });
       setContextTokens(activeEngine.getContextTokens());
 
-      // If all tasks were completed, clean them up from database so they do not persist into future prompts
-      const currentTasks = TaskManager.listTasks(sessionState.id);
-      if (currentTasks.length > 0 && currentTasks.every((t) => t.status === 'completed')) {
-        TaskManager.clearCompletedTasks(sessionState.id);
-        setSessionTasks([]);
-      } else {
-        setSessionTasks(currentTasks);
-      }
+      // Clean up completed tasks from database so they do not persist into future prompts
+      const currentSessionId = activeEngine.getSessionState().id;
+      TaskManager.clearCompletedTasks(currentSessionId);
+      const remainingTasks = TaskManager.listTasks(currentSessionId);
+      setSessionTasks(remainingTasks);
 
       if (queuedPromptRef.current) {
         const next = queuedPromptRef.current;
@@ -370,6 +368,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
     const handleSessionReset = (newSession: any) => {
       setSessionState({ ...newSession });
+      setSessionTasks([]);
       setMessages([...activeEngine.getMessages()]);
       setContextTokens(activeEngine.getContextTokens());
     };
@@ -403,7 +402,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
     activeEngine.on('ask_question', handleAskQuestion);
 
     const handleTaskChange = (changedSessionId: string) => {
-      if (changedSessionId === sessionState.id) {
+      const currentSessionId = activeEngine.getSessionState().id;
+      if (changedSessionId === currentSessionId) {
         setSessionTasks(TaskManager.listTasks(changedSessionId));
       }
     };
@@ -431,7 +431,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
   }, [activeEngine, handleError]);
 
   const handleUserSubmit = async (prompt: string) => {
-    if (prompt === '/exit' || prompt === '/quit') {
+    // 1. Exit / Quit (Emergency terminate)
+    if (prompt === '/exit' || prompt === '/quit' || prompt === 'exit' || prompt === 'quit') {
       if (isBusyRef.current) {
         activeEngine.abort();
       }
@@ -439,7 +440,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    if (prompt === '/unqueue' || prompt === '/clear-queue' || prompt === '/dq') {
+    // 2. Unqueue / Clear Queue
+    if (prompt === '/unqueue' || prompt === '/clear-queue' || prompt === '/dq' || prompt === 'unqueue') {
       if (queuedPromptRef.current) {
         queuedPromptRef.current = null;
         setQueuedPrompt(null);
@@ -464,16 +466,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    if (isBusyRef.current) {
-      const trimmed = prompt.trim();
-      if (trimmed) {
-        queuedPromptRef.current = trimmed;
-        setQueuedPrompt(trimmed);
-      }
-      return;
-    }
-
-    if (prompt === '/clear') {
+    // 3. Clear terminal screen
+    if (prompt === '/clear' || prompt === 'clear') {
       activeEngine.clearMessages();
       setMessages([]);
       setContextTokens(activeEngine.getContextTokens());
@@ -481,9 +475,12 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
+    // 4. Session reset / delete commands
     if (
       prompt === '/new' ||
       prompt.startsWith('/new ') ||
+      prompt === 'new' ||
+      prompt.startsWith('new ') ||
       prompt === '/reset' ||
       prompt.startsWith('/reset ') ||
       prompt === '/delete' ||
@@ -494,7 +491,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       prompt.startsWith('/drop ')
     ) {
       const parts = prompt.split(' ');
-      const cmdName = parts[0];
+      const cmdName = parts[0].toLowerCase();
       const args = parts.slice(1);
       const isDeleteRequested =
         cmdName === '/delete' ||
@@ -505,6 +502,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
       const oldSessionId = sessionState.id;
       const newSession = activeEngine.resetSession({ deleteCurrent: isDeleteRequested });
+      TaskManager.clearAllTasks(oldSessionId);
+      setSessionTasks([]);
 
       setMessages([]);
       setSessionState(newSession);
@@ -530,7 +529,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    if (prompt.startsWith('/lang')) {
+    // 5. Language switch
+    if (prompt.startsWith('/lang') || prompt.startsWith('lang ')) {
       const userCmdMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
@@ -572,7 +572,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    if (prompt === '/plan' || prompt.startsWith('/plan ')) {
+    // 6. Plan Mode toggle / inspection
+    if (prompt === '/plan' || prompt.startsWith('/plan ') || prompt === 'plan' || prompt.startsWith('plan ')) {
       const userCmdMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
@@ -581,7 +582,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       };
       activeEngine.appendSyntheticMessage(userCmdMsg);
 
-      const targetPath = prompt.replace(/^\/plan\s*/, '').trim();
+      const targetPath = prompt.replace(/^(\/)?plan\s*/i, '').trim();
       const sub = targetPath.toLowerCase();
 
       if (sub === 'view' || sub === 'show') {
@@ -638,52 +639,83 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    // Check CommandRegistry for registered slash commands (PromptCommand, LocalCommand)
+    // 7. Check CommandRegistry for registered slash commands (PromptCommand, LocalCommand)
     const parsedCmd = commandRegistry.parseInput(prompt);
     if (parsedCmd) {
       const cmd = commandRegistry.get(parsedCmd.commandName);
       if (cmd) {
-        const userCmdMsg: UnifiedMessage = {
-          id: randomUUID(),
-          role: 'user',
-          content: prompt,
-          timestamp: Date.now(),
-        };
-        activeEngine.appendSyntheticMessage(userCmdMsg);
-
-        const cmdCtx = {
-          cwd: sessionState.cwd,
-          sessionState: sessionState as unknown as Record<string, unknown>,
-          args: parsedCmd.args,
-        };
-
+        // A. LOCAL COMMAND: ALWAYS EXECUTE IMMEDIATELY, REGARDLESS OF isBusy (e.g. /tab new, /tab switch, /status, /help)
         if (cmd.type === 'local') {
+          const userCmdMsg: UnifiedMessage = {
+            id: randomUUID(),
+            role: 'user',
+            content: prompt,
+            timestamp: Date.now(),
+          };
+          activeEngine.appendSyntheticMessage(userCmdMsg);
+
+          const cmdCtx = {
+            cwd: sessionState.cwd,
+            sessionState: sessionState as unknown as Record<string, unknown>,
+            args: parsedCmd.args,
+          };
+
           const res = await cmd.execute(cmdCtx);
+
+          // Get active tab's query engine in case the command switched tabs (e.g. /tab new or /tab switch)
+          const pool = MultiSessionPool.getInstance();
+          const currentTab = pool.getActiveTab();
+          const targetEngine = currentTab ? currentTab.queryEngine : activeEngine;
+
           const localMsg: UnifiedMessage = {
             id: randomUUID(),
             role: 'assistant',
             content: res,
             timestamp: Date.now() + 1,
           };
-          activeEngine.appendSyntheticMessage(localMsg);
-          setMessages([...activeEngine.getMessages()]);
+          targetEngine.appendSyntheticMessage(localMsg);
+          setMessages([...targetEngine.getMessages()]);
 
-          // Synchronize sessionState and QueryEngine with model/provider/maxTurns/permissionMode changes
+          // Synchronize sessionState and targetEngine with model/provider/maxTurns/permissionMode changes
           const updatedState = { ...sessionState, ...(cmdCtx.sessionState as unknown as typeof sessionState) };
           setSessionState(updatedState);
           if (updatedState.permissionMode && updatedState.permissionMode !== sessionState.permissionMode) {
-            activeEngine.setPermissionMode(updatedState.permissionMode);
+            targetEngine.setPermissionMode(updatedState.permissionMode);
           }
           if (updatedState.provider && updatedState.model) {
-            activeEngine.updateSessionModel(updatedState.provider, updatedState.model);
+            targetEngine.updateSessionModel(updatedState.provider, updatedState.model);
           }
           if ((cmdCtx.sessionState as Record<string, unknown>).maxTurns !== undefined) {
-            activeEngine.updateMaxTurns((cmdCtx.sessionState as Record<string, unknown>).maxTurns as number);
+            targetEngine.updateMaxTurns((cmdCtx.sessionState as Record<string, unknown>).maxTurns as number);
           }
           return;
         }
 
+        // B. PROMPT COMMAND: If agent is busy, queue prompt; otherwise execute immediately
         if (cmd.type === 'prompt') {
+          if (isBusyRef.current) {
+            const trimmed = prompt.trim();
+            if (trimmed) {
+              queuedPromptRef.current = trimmed;
+              setQueuedPrompt(trimmed);
+            }
+            return;
+          }
+
+          const userCmdMsg: UnifiedMessage = {
+            id: randomUUID(),
+            role: 'user',
+            content: prompt,
+            timestamp: Date.now(),
+          };
+          activeEngine.appendSyntheticMessage(userCmdMsg);
+
+          const cmdCtx = {
+            cwd: sessionState.cwd,
+            sessionState: sessionState as unknown as Record<string, unknown>,
+            args: parsedCmd.args,
+          };
+
           const expandedPrompt = await cmd.getPrompt(cmdCtx);
           setIsBusy(true);
           isBusyRef.current = true;
@@ -700,8 +732,8 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
     }
 
-    // History Inspection Navigation Slash Commands
-    if (prompt.startsWith('/inspect') || prompt.startsWith('/turn')) {
+    // 8. History Inspection Navigation Slash Commands
+    if (prompt.startsWith('/inspect') || prompt.startsWith('/turn') || prompt.startsWith('turn ') || prompt.startsWith('inspect ')) {
       const parts = prompt.trim().split(/\s+/);
       const targetTurn = parseInt(parts[1], 10);
       if (!isNaN(targetTurn) && targetTurn >= 1 && targetTurn <= promptTurns.length) {
@@ -710,7 +742,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       }
     }
 
-    if (prompt === '/history') {
+    if (prompt === '/history' || prompt === 'history') {
       const historySummary =
         promptTurns.length === 0
           ? 'No previous prompt turns in this session yet.'
@@ -734,12 +766,12 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
       return;
     }
 
-    if (prompt === '/return' || prompt === '/bottom') {
+    if (prompt === '/return' || prompt === '/bottom' || prompt === 'return') {
       setViewingTurnIndex(null);
       return;
     }
 
-    if (prompt === '/help') {
+    if (prompt === '/help' || prompt === 'help') {
       const userCmdMsg: UnifiedMessage = {
         id: randomUUID(),
         role: 'user',
@@ -750,7 +782,7 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
 
       const allCommands = commandRegistry.list();
       const codeQualityNames = ['doctor', 'review', 'commit', 'diff', 'rewind', 'init', 'export'];
-      const intelligenceNames = ['model', 'mode', 'turns', 'compact', 'status', 'stats', 'cost', 'memory', 'skills', 'worktree', 'gateway', 'sessions'];
+      const intelligenceNames = ['model', 'mode', 'turns', 'compact', 'status', 'stats', 'cost', 'memory', 'skills', 'worktree', 'gateway', 'sessions', 'tab', 'maxing'];
 
       const codeQualityCmds = allCommands.filter((c) => codeQualityNames.includes(c.name));
       const intelligenceCmds = allCommands.filter((c) => intelligenceNames.includes(c.name));
@@ -762,26 +794,38 @@ export const App: React.FC<AppProps> = ({ queryEngine, initialPrompt }) => {
           'InterShader Slash Commands',
           '',
           '[System & Session Controls]',
-          '  /plan [path|view|reset] - Toggle Plan Mode, inspect active plan, or reset',
-          '  /history     - View prompt history turns and shortcuts',
-          '  /turn <id>   - Inspect historical prompt turn in rewind viewport',
-          '  /return      - Return to latest bottom prompt input',
-          '  /lang <id>   - Switch UI language (en, vi, ja, zh, es, fr, de, ko, ru)',
-          '  /unqueue     - Delete/clear currently queued prompt',
-          '  /clear       - Clear chat screen',
-          '  /exit, /quit - Exit terminal',
+          '  /tab new <title> - Create secondary session in isolated Git worktree',
+          '  /tab switch <n>  - Switch active viewport to tab',
+          '  /plan [view|rst] - Toggle Plan Mode, inspect active plan, or reset',
+          '  /history         - View prompt history turns and shortcuts',
+          '  /turn <id>       - Inspect historical prompt turn in rewind viewport',
+          '  /return          - Return to latest bottom prompt input',
+          '  /lang <id>       - Switch UI language (en, vi, ja, zh, es, fr, de, ko, ru)',
+          '  /unqueue         - Delete/clear currently queued prompt',
+          '  /clear           - Clear chat screen',
+          '  /exit, /quit     - Exit terminal',
           '',
           '[Code Quality & Versioning]',
-
           ...codeQualityCmds.map((c) => `  /${c.name.padEnd(12)} - ${c.description}`),
           '',
-          '[Intelligence & Sandboxing]',
+          '[Intelligence & Multi-Session Sandboxing]',
           ...intelligenceCmds.map((c) => `  /${c.name.padEnd(12)} - ${c.description}`),
         ].join('\n'),
         timestamp: Date.now() + 1,
       };
       activeEngine.appendSyntheticMessage(helpMsg);
       setMessages([...activeEngine.getMessages()]);
+      return;
+    }
+
+    // 9. Standard User Prompt (AI Execution)
+    // If agent is currently busy processing, enqueue the prompt
+    if (isBusyRef.current) {
+      const trimmed = prompt.trim();
+      if (trimmed) {
+        queuedPromptRef.current = trimmed;
+        setQueuedPrompt(trimmed);
+      }
       return;
     }
 

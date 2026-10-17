@@ -31,26 +31,66 @@ export class CommandRegistry {
   }
 
   /**
-   * Parse input line (e.g. "/review src/auth.ts") into command and args
+   * Parse input line (e.g. "/review src/auth.ts" or "tab new worker") into command and args
    */
   parseInput(input: string): { commandName: string; args: string[] } | null {
     const trimmed = input.trim();
-    if (!trimmed.startsWith('/')) {
+    if (!trimmed) {
       return null;
     }
 
     const regex = /[^\s"']+|"([^"]*)"|'([^']*)'/g;
     const matches: string[] = [];
     let match: RegExpExecArray | null;
-    while ((match = regex.exec(trimmed.slice(1))) !== null) {
-      matches.push(match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[0]);
+
+    // Case 1: Standard slash command with leading '/'
+    if (trimmed.startsWith('/')) {
+      while ((match = regex.exec(trimmed.slice(1))) !== null) {
+        matches.push(match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[0]);
+      }
+      if (matches.length === 0) return null;
+      const commandName = matches[0].toLowerCase();
+      const args = matches.slice(1);
+      return { commandName, args };
     }
 
+    // Case 2: Natural CLI command without leading '/'
+    while ((match = regex.exec(trimmed)) !== null) {
+      matches.push(match[1] !== undefined ? match[1] : match[2] !== undefined ? match[2] : match[0]);
+    }
     if (matches.length === 0) return null;
-    const commandName = matches[0];
-    const args = matches.slice(1);
 
-    return { commandName, args };
+    const firstToken = matches[0].toLowerCase();
+    const ALLOWED_UNPREFIXED_COMMANDS = new Set([
+      'tab',
+      'tabs',
+      'status',
+      'exit',
+      'quit',
+      'clear',
+      'unqueue',
+      'help',
+      'history',
+      'return',
+      'maxing',
+      'max',
+      'department',
+      'fast',
+      'think',
+      'turns',
+      'mode',
+      'model',
+      'audit',
+      'plan',
+      'new',
+      'switch',
+    ]);
+
+    if (ALLOWED_UNPREFIXED_COMMANDS.has(firstToken) && this.has(firstToken)) {
+      return { commandName: firstToken, args: matches.slice(1) };
+    }
+
+    return null;
   }
 
   /**

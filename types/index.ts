@@ -107,6 +107,8 @@ export interface SessionConfig {
   proofMode?: boolean;
   resumeSession?: boolean;
   maxTurns?: number;
+  maxingMode?: boolean;
+  maxingBudget?: number;
 }
 
 export interface SessionState {
@@ -123,6 +125,8 @@ export interface SessionState {
   speedMode?: 'normal' | 'fast' | 'turbo';
   thinkingBudget?: number;
   totalCachedTokens?: number;
+  maxingMode?: boolean;
+  maxingBudget?: number;
 }
 
 export interface PromptTurnEntry {

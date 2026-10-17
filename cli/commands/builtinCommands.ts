@@ -1,4 +1,4 @@
-import type { PromptCommand, LocalCommand } from './types.js';
+import type { PromptCommand, LocalCommand, CommandContext } from './types.js';
 import type { CommandRegistry } from './CommandRegistry.js';
 import { execSync } from 'child_process';
 import fs from 'fs';
@@ -904,7 +904,34 @@ export const statusCommand: LocalCommand = {
       `Token Counters:  In: ${input.toLocaleString()} | Out: ${output.toLocaleString()}`,
       `Estimated Cost:  $${(((input / 1_000_000) * 3.0) + ((output / 1_000_000) * 15.0)).toFixed(4)} USD`,
     ].join('\n');
-  }
+  },
+};
+
+export const helpCommand: LocalCommand = {
+  name: 'help',
+  description: 'Display interactive guide and summary of all available slash commands',
+  type: 'local',
+  aliases: ['commands', '?'],
+  execute: () => {
+    return [
+      'InterShader Slash Commands Guide',
+      '',
+      '[Multi-Session & Tab Management]',
+      '  /tab new <title> [role]  - Create concurrent secondary agent session in isolated Git worktree',
+      '  /tab switch <n>         - Switch active viewport to tab (or press Alt+1..9)',
+      '  /tab list               - List all active concurrent session tabs and statuses',
+      '  /tab merge [n]          - Merge worktree code back into primary branch',
+      '  /tab close <n>          - Close secondary session and clean up worktree',
+      '',
+      '[System Controls]',
+      '  /status                 - Display active session status, git branch, tokens, and cost',
+      '  /plan [view|reset]      - Toggle plan mode, inspect active plan, or reset',
+      '  /maxing [on|off|status] - Unconstrained reasoning budget (16k tokens) & department swarm',
+      '  /clear                  - Clear terminal screen',
+      '  /unqueue                - Clear currently queued prompt',
+      '  /exit, /quit            - Exit terminal',
+    ].join('\n');
+  },
 };
 
 export const memoryCommand: LocalCommand = {
@@ -1616,7 +1643,7 @@ export const repoMapCommand: LocalCommand = {
 
 export const tasksCommand: LocalCommand = {
   name: 'tasks',
-  description: 'Display active task checklist, execution progress, or clear tasks (/tasks [clear|reset])',
+  description: 'Display active task checklist, tick tasks done, or clear tasks (/tasks [done <id>|tick <id>|clear|prune])',
   type: 'local',
   aliases: ['todos', 'todo'],
   execute: (ctx) => {
@@ -1626,9 +1653,63 @@ export const tasksCommand: LocalCommand = {
     }
 
     const sub = ctx.args[0]?.toLowerCase();
+    const targetArg = ctx.args[1];
+
+    // Clear completed / prune
+    if (sub === 'prune' || sub === 'clear-done' || (sub === 'clear' && targetArg?.toLowerCase() === 'completed')) {
+      const cleared = TaskManager.clearCompletedTasks(sessionId);
+      return `[TASKS]: Cleared ${cleared} completed task(s) from session checklist.`;
+    }
+
+    // Clear all
     if (sub === 'clear' || sub === 'reset') {
       const cleared = TaskManager.clearAllTasks(sessionId);
       return `[TASKS]: Cleared ${cleared} task(s) from session checklist.`;
+    }
+
+    // Tick / complete a task: /tasks tick <id>, /tasks done <id>, /tasks complete <id>, or /tasks <id> done
+    const isTickCmd = sub === 'tick' || sub === 'done' || sub === 'complete' || sub === 'check';
+    const isReverseTick = /^\d+$/.test(sub || '') && (targetArg?.toLowerCase() === 'done' || targetArg?.toLowerCase() === 'tick');
+    if (isTickCmd || isReverseTick) {
+      const taskId = isReverseTick ? sub : targetArg;
+      if (!taskId) {
+        return '[TASKS]: Please specify the task ID to complete, e.g. /tasks done 1';
+      }
+      const task = TaskManager.getTask(sessionId, taskId);
+      if (!task) {
+        return `[TASKS]: Task #${taskId} not found in session.`;
+      }
+      TaskManager.updateTask(sessionId, taskId, { status: 'completed' });
+      return `[TASKS]: Marked task #${taskId} ("${task.subject}") as [✔] COMPLETED.`;
+    }
+
+    // Untick / pending a task: /tasks untick <id>, /tasks pending <id>
+    const isUntickCmd = sub === 'untick' || sub === 'pending' || sub === 'uncheck';
+    if (isUntickCmd) {
+      const taskId = targetArg;
+      if (!taskId) {
+        return '[TASKS]: Please specify the task ID, e.g. /tasks untick 1';
+      }
+      const task = TaskManager.getTask(sessionId, taskId);
+      if (!task) {
+        return `[TASKS]: Task #${taskId} not found in session.`;
+      }
+      TaskManager.updateTask(sessionId, taskId, { status: 'pending' });
+      return `[TASKS]: Marked task #${taskId} ("${task.subject}") as [○] PENDING.`;
+    }
+
+    // Start / in_progress a task: /tasks start <id>, /tasks in_progress <id>
+    if (sub === 'start' || sub === 'in_progress' || sub === 'run') {
+      const taskId = targetArg;
+      if (!taskId) {
+        return '[TASKS]: Please specify the task ID, e.g. /tasks start 1';
+      }
+      const task = TaskManager.getTask(sessionId, taskId);
+      if (!task) {
+        return `[TASKS]: Task #${taskId} not found in session.`;
+      }
+      TaskManager.updateTask(sessionId, taskId, { status: 'in_progress' });
+      return `[TASKS]: Marked task #${taskId} ("${task.subject}") as [▶] IN_PROGRESS.`;
     }
 
     const tasks = TaskManager.listTasks(sessionId);
@@ -1648,6 +1729,8 @@ export const tasksCommand: LocalCommand = {
         lines.push(`     ${t.description}`);
       }
     }
+    lines.push('------------------------------------------------------------');
+    lines.push('Commands: /tasks done <id> | /tasks untick <id> | /tasks prune | /tasks clear');
     return lines.join('\n');
   },
 };
@@ -1802,7 +1885,9 @@ export const tabCommand: LocalCommand = {
       const role = (ctx.args[2] || 'general') as any;
       try {
         const newTab = await pool.createTab({ title, role });
-        return `[TABS]: Successfully created Tab "${newTab.title}" [Role: ${newTab.role}].\nIsolated Worktree: ${newTab.worktreePath}\nGit Branch: ${newTab.branch || 'N/A'}\nTo switch to this tab, type: /tab switch ${pool.getTabs().length}`;
+        pool.switchActiveTab(newTab.id);
+        const tabNumber = pool.getTabs().findIndex((t) => t.id === newTab.id) + 1;
+        return `[TABS]: Successfully created and switched to Tab ${tabNumber}: "${newTab.title}" [Role: ${newTab.role}].\nIsolated Worktree: ${newTab.worktreePath}\nGit Branch: ${newTab.branch || 'N/A'}\n🚀 Ready for concurrent prompt execution! Previous tab continues running in background.\nShortcut: Press Alt+1..${pool.getTabs().length} or /tab switch <n> to switch between tabs.`;
       } catch (err: unknown) {
         return `[TABS ERROR]: Failed to create worktree session: ${err instanceof Error ? err.message : String(err)}`;
       }
@@ -1842,6 +1927,119 @@ export const tabCommand: LocalCommand = {
     }
 
     return '[TABS]: Unknown command. Usage: /tab list | /tab new <title> | /tab switch <number> | /tab merge | /tab close';
+  },
+};
+
+export const enhanceCommand: LocalCommand = {
+  name: '/enhance',
+  description: 'Enhance vague research inquiries into 6-dimension structured ML specifications (WHAT, WHY, HOW, DONE)',
+  type: 'local',
+  aliases: ['/prompt-enhancer', '/pe'],
+  async execute(ctx: CommandContext): Promise<string> {
+    const raw = ctx.args.join(' ').trim();
+    if (!raw) {
+      return '[ENHANCE]: Please provide a prompt or research goal to enhance. Usage: /enhance <goal or model description>';
+    }
+    const { PromptEnhancerTool } = await import('../../tools/agentic/PromptEnhancerTool.js');
+    const tool = new PromptEnhancerTool();
+    return await tool.execute(
+      {
+        action: 'enhance_prompt',
+        rawPrompt: raw,
+      },
+      {
+        sessionId: 'cli-session',
+        cwd: ctx.cwd,
+        permissionMode: 'auto',
+      }
+    );
+  },
+};
+
+export const auditCommand: LocalCommand = {
+  name: '/audit',
+  description: 'Audit project dependencies for security vulnerabilities (CVEs), outdated packages, and licenses',
+  type: 'local',
+  aliases: ['/dependency-audit', '/dep-audit'],
+  async execute(ctx: CommandContext): Promise<string> {
+    const targetDir = ctx.args[0] || '.';
+    const { DependencyAuditTool } = await import('../../tools/code/DependencyAuditTool.js');
+    const tool = new DependencyAuditTool();
+    return await tool.execute(
+      {
+        targetDir,
+        ecosystem: 'auto',
+        saveReport: true,
+      },
+      {
+        sessionId: 'cli-session',
+        cwd: ctx.cwd,
+        permissionMode: 'auto',
+      }
+    );
+  },
+};
+
+export const maxingCommand: LocalCommand = {
+  name: 'maxing',
+  description: 'Toggle Maxing Mode: unconstrained reasoning budget (up to 32k tokens) and multi-threaded department swarm (/maxing [on|off|status|run <goal>])',
+  type: 'local',
+  aliases: ['max', 'department'],
+  async execute(ctx: CommandContext): Promise<string> {
+    const st = ctx.sessionState as Record<string, unknown>;
+    const sub = (ctx.args[0] || '').toLowerCase().trim();
+
+    if (sub === 'on' || sub === 'enable' || sub === 'start') {
+      st.maxingMode = true;
+      st.thinkingBudget = 16384;
+      return '🚀 [MAXING MODE: ACTIVE]\n- Unconstrained Reasoning Budget: Enabled (16,384 tokens thinking).\n- Department Swarm: Mobilizes Lead Architect, Core Engineers, Domain Specialists, Security Auditors & Reviewers.\n- Clamping Disabled: Retains full reasoning depth across all conversation turns.\n- All subsequent prompts will execute with maximum departmental intelligence.';
+    }
+
+    if (sub === 'off' || sub === 'disable' || sub === 'stop') {
+      st.maxingMode = false;
+      st.thinkingBudget = 2048;
+      return '🛑 [MAXING MODE: DISABLED]\n- Reverted to standard token budget and single-agent execution.';
+    }
+
+    if (sub === 'status') {
+      const isMaxing = Boolean(st.maxingMode);
+      const { DepartmentBlackboard } = await import('../../engine/swarm/DepartmentBlackboard.js');
+      const digest = DepartmentBlackboard.getInstance().getDigest();
+      return [
+        `📊 [MAXING MODE STATUS]: ${isMaxing ? '🟢 ACTIVE' : '⚪ INACTIVE'}`,
+        `- Thinking Token Budget: ${st.thinkingBudget || (isMaxing ? 16384 : 'Standard')}`,
+        `- Department Swarm: ${isMaxing ? 'Ready for multi-threaded parallel dispatch' : 'Standby'}`,
+        '',
+        digest,
+      ].join('\n');
+    }
+
+    if (sub === 'run') {
+      const goal = ctx.args.slice(1).join(' ').trim();
+      if (!goal) {
+        return '[MAXING]: Please provide a mission goal for the department. Usage: /maxing run <mission goal>';
+      }
+      const { SwarmDepartmentCoordinator } = await import('../../engine/swarm/SwarmDepartmentCoordinator.js');
+      const coordinator = new SwarmDepartmentCoordinator();
+      const report = await coordinator.executeMission({
+        missionGoal: goal,
+        baseCwd: ctx.cwd,
+        maxingBudget: 16384,
+        autoMerge: true,
+      });
+      return report.summary;
+    }
+
+    // Toggle if no argument provided
+    const nextState = !st.maxingMode;
+    st.maxingMode = nextState;
+    if (nextState) {
+      st.thinkingBudget = 16384;
+      return '🚀 [MAXING MODE: ACTIVE]\n- Unconstrained thinking budget (16k tokens) and multi-threaded department swarm enabled.\n- Usage: /maxing [on|off|status|run <goal>]';
+    } else {
+      st.thinkingBudget = 2048;
+      return '🛑 [MAXING MODE: DISABLED]\n- Reverted to standard token budget.';
+    }
   },
 };
 
@@ -1891,5 +2089,11 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
   registry.register(setupCommand);
   registry.register(swarmCommand);
   registry.register(tabCommand);
+
+  // Research, Dependency Audit & Maxing Mode commands
+  registry.register(enhanceCommand);
+  registry.register(auditCommand);
+  registry.register(maxingCommand);
+  registry.register(helpCommand);
 }
 
