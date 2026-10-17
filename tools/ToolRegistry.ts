@@ -23,6 +23,9 @@ import { GitCommitTool } from './execution/GitCommitTool.js';
 import { RepoMapTool } from './context/RepoMapTool.js';
 import { CodeReviewSentinelTool } from './code/CodeReviewSentinelTool.js';
 import { ScheduleTaskTool } from './agentic/ScheduleTaskTool.js';
+import { PromptEnhancerTool } from './agentic/PromptEnhancerTool.js';
+import { DependencyAuditTool } from './code/DependencyAuditTool.js';
+import { MaxingDepartmentTool } from './agentic/MaxingDepartmentTool.js';
 
 import { WebFetchTool } from './web/WebFetchTool.js';
 import {
@@ -84,6 +87,8 @@ export class ToolRegistry {
     this.register(new GitCommitTool());
     this.register(new RepoMapTool());
     this.register(new CodeReviewSentinelTool());
+    this.register(new PromptEnhancerTool());
+    this.register(new DependencyAuditTool());
 
     // Serena Semantic Engine tools
     this.register(new SerenaOutlineTool());
@@ -105,6 +110,7 @@ export class ToolRegistry {
 
     // Subagent Orchestrator & Multi-Agent Concurrency
     this.register(new DecomposeAndDispatchTool());
+    this.register(new MaxingDepartmentTool());
 
     // Deferred tools (activated on-demand)
     this.register(new SubagentTool());

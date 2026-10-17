@@ -1,22 +1,33 @@
 import { z } from 'zod';
 import path from 'node:path';
-import fs from 'node:fs';
 import { BaseTool } from '../BaseTool.js';
 import type { ToolExecutionContext } from '../../types/index.js';
 import { ScienceSkillBridge } from '../../services/skills/ScienceSkillBridge.js';
 
 export interface AlphaGenomeArgs {
-  action: 'lookup_gene' | 'resolve_ontology' | 'analyze_variant';
+  action:
+    | 'lookup_gene'
+    | 'resolve_ontology'
+    | 'analyze_variant'
+    | 'analyze_ism'
+    | 'interpret_splicing'
+    | 'visualize_tracks'
+    | 'broad_scan';
   geneSymbol?: string;
   variant?: string;
   term?: string;
+  interval?: string;
   outputFile?: string;
 }
 
+/**
+ * AlphaGenomeTool provides genomic variant effect analysis across gene expression,
+ * chromatin accessibility (DNASE), histone marks (ChIP), splicing disruption, and In-Silico Mutagenesis (ISM).
+ */
 export class AlphaGenomeTool extends BaseTool<AlphaGenomeArgs, string> {
   readonly name = 'alphagenome_analysis';
   readonly description =
-    'Analyze genetic variant effects on gene expression, chromatin accessibility, histone marks, and transcription factors via AlphaGenome API & local annotations.';
+    'Analyze genetic variant effects via DeepMind AlphaGenome: gene lookup, ontology resolution, ISM, splicing delta, and track visualization.';
   readonly isReadOnly = false;
   readonly isDestructive = false;
   readonly requiresPermission = false;
@@ -24,24 +35,21 @@ export class AlphaGenomeTool extends BaseTool<AlphaGenomeArgs, string> {
 
   readonly inputSchema = z.object({
     action: z
-      .enum(['lookup_gene', 'resolve_ontology', 'analyze_variant'])
-      .describe('Action to execute: lookup_gene (offline GTF), resolve_ontology (UBERON/CL mapping), analyze_variant'),
-    geneSymbol: z
-      .string()
-      .optional()
-      .describe('Gene symbol for lookup (e.g. TP53, BRCA1, ERBB2)'),
-    variant: z
-      .string()
-      .optional()
-      .describe('Variant specification in chr:pos:ref>alt format (e.g. chr7:140753336:A>T)'),
-    term: z
-      .string()
-      .optional()
-      .describe('Biological tissue or cell-type term to resolve to ontology (e.g. liver, heart, cerebellar cortex)'),
-    outputFile: z
-      .string()
-      .optional()
-      .describe('Optional output file path for JSON results'),
+      .enum([
+        'lookup_gene',
+        'resolve_ontology',
+        'analyze_variant',
+        'analyze_ism',
+        'interpret_splicing',
+        'visualize_tracks',
+        'broad_scan',
+      ])
+      .describe('AlphaGenome analysis action'),
+    geneSymbol: z.string().optional().describe('Gene symbol (e.g. TP53, BRCA1, USH2A)'),
+    variant: z.string().optional().describe('Variant in chr:pos:ref>alt format (e.g. chr7:140753336:A>T)'),
+    term: z.string().optional().describe('Tissue or cell-type term to map to UBERON/CL ontology (e.g. liver, heart)'),
+    interval: z.string().optional().describe('Genomic interval for visualize_tracks (e.g. chr7:140750000-140760000)'),
+    outputFile: z.string().optional().describe('Optional output file path for JSON results or plots'),
   });
 
   async execute(args: AlphaGenomeArgs, context: ToolExecutionContext): Promise<string> {
@@ -54,87 +62,106 @@ export class AlphaGenomeTool extends BaseTool<AlphaGenomeArgs, string> {
       context.onProgress(`[AlphaGenome]: Executing "${args.action}" on target "${args.geneSymbol || args.variant || args.term || 'query'}"`);
     }
 
-    // 1. Gene lookup (offline GTF)
-    if (args.action === 'lookup_gene') {
-      if (!args.geneSymbol) {
-        return '[ALPHAGENOME ERROR]: geneSymbol is required for lookup_gene (e.g. TP53, BRCA1).';
+    try {
+      if (args.action === 'lookup_gene') {
+        return await this.handleLookupGene(scriptsDir, args, context);
       }
-
-      const scriptPath = path.join(scriptsDir, 'lookup_gene_info.py');
-      const scriptArgs = [args.geneSymbol];
-      if (args.outputFile) {
-        scriptArgs.push('--output', args.outputFile);
+      if (args.action === 'resolve_ontology') {
+        return await this.handleResolveOntology(scriptsDir, args, context);
       }
-
-      const res = await ScienceSkillBridge.runScript(scriptPath, scriptArgs, {
-        cwd: context.cwd,
-        timeoutMs: 45000,
-      });
-
-      if (!res.success) {
-        return `[ALPHAGENOME LOOKUP FAILED]:\n${res.stderr || res.stdout}`;
+      if (args.action === 'analyze_ism') {
+        return await this.handleAnalyzeIsm(scriptsDir, args, context);
       }
+      if (args.action === 'interpret_splicing') {
+        return await this.handleInterpretSplicing(scriptsDir, args, context);
+      }
+      if (args.action === 'visualize_tracks') {
+        return await this.handleVisualizeTracks(scriptsDir, args, context);
+      }
+      if (args.action === 'broad_scan' || args.action === 'analyze_variant') {
+        return await this.handleVariantScoring(scriptsDir, args, context);
+      }
+      return '[ALPHAGENOME ERROR]: Unsupported action.';
+    } catch (err) {
+      return `[ALPHAGENOME EXCEPTION]: ${(err as Error).message}`;
+    }
+  }
 
+  private async handleLookupGene(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    if (!args.geneSymbol) return '[ALPHAGENOME ERROR]: geneSymbol is required for lookup_gene (e.g. TP53, BRCA1).';
+    const script = path.join(scriptsDir, 'lookup_gene_info.py');
+    const scriptArgs = [args.geneSymbol];
+    if (args.outputFile) scriptArgs.push('--output', args.outputFile);
+    const res = await ScienceSkillBridge.runScript(script, scriptArgs, { cwd: ctx.cwd, timeoutMs: 45000 });
+    if (!res.success) return `[ALPHAGENOME LOOKUP FAILED]:\n${res.stderr || res.stdout}`;
+    return `🧬 [AlphaGenome Gene Lookup]:\n- Symbol: ${args.geneSymbol}\n- Result:\n${res.stdout.trim()}`;
+  }
+
+  private async handleResolveOntology(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    if (!args.term) return '[ALPHAGENOME ERROR]: term is required for resolve_ontology (e.g. liver, cerebellar cortex).';
+    const script = path.join(scriptsDir, 'resolve_ontology_terms.py');
+    const res = await ScienceSkillBridge.runScript(script, [args.term], { cwd: ctx.cwd, timeoutMs: 30000 });
+    return `🧬 [AlphaGenome Ontology Mapping]:\n- Biological Term: "${args.term}"\n- Result:\n${res.stdout || res.stderr}`;
+  }
+
+  private async handleAnalyzeIsm(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    if (!args.variant) return '[ALPHAGENOME ERROR]: variant is required for analyze_ism.';
+    const apiKeyNotice = this.checkApiKey();
+    if (apiKeyNotice) return apiKeyNotice;
+
+    const script = path.join(scriptsDir, 'analyze_ism.py');
+    const scriptArgs = ['--variant', args.variant];
+    if (args.outputFile) scriptArgs.push('--output', args.outputFile);
+    const res = await ScienceSkillBridge.runScript(script, scriptArgs, { cwd: ctx.cwd, timeoutMs: 90000 });
+    return `🧬 [AlphaGenome In-Silico Mutagenesis (ISM)]:\n- Variant: ${args.variant}\n- Output:\n${res.stdout || res.stderr}`;
+  }
+
+  private async handleInterpretSplicing(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    if (!args.variant) return '[ALPHAGENOME ERROR]: variant is required for interpret_splicing.';
+    const apiKeyNotice = this.checkApiKey();
+    if (apiKeyNotice) return apiKeyNotice;
+
+    const script = path.join(scriptsDir, 'interpret_splicing.py');
+    const scriptArgs = ['--variant', args.variant];
+    if (args.outputFile) scriptArgs.push('--output', args.outputFile);
+    const res = await ScienceSkillBridge.runScript(script, scriptArgs, { cwd: ctx.cwd, timeoutMs: 90000 });
+    return `🧬 [AlphaGenome Quantitative Splicing Interpretation]:\n- Variant: ${args.variant}\n- Output:\n${res.stdout || res.stderr}`;
+  }
+
+  private async handleVisualizeTracks(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    const target = args.interval || args.variant;
+    if (!target) return '[ALPHAGENOME ERROR]: interval or variant is required for visualize_tracks.';
+    const apiKeyNotice = this.checkApiKey();
+    if (apiKeyNotice) return apiKeyNotice;
+
+    const script = path.join(scriptsDir, 'visualize_genome_tracks.py');
+    const scriptArgs = ['--target', target];
+    if (args.outputFile) scriptArgs.push('--output', args.outputFile);
+    const res = await ScienceSkillBridge.runScript(script, scriptArgs, { cwd: ctx.cwd, timeoutMs: 90000 });
+    return `🧬 [AlphaGenome Track Visualization]:\n- Target: ${target}\n- Output:\n${res.stdout || res.stderr}`;
+  }
+
+  private async handleVariantScoring(scriptsDir: string, args: AlphaGenomeArgs, ctx: ToolExecutionContext): Promise<string> {
+    if (!args.variant) return '[ALPHAGENOME ERROR]: variant is required (format chr:pos:ref>alt, e.g. chr7:140753336:A>T).';
+    const apiKeyNotice = this.checkApiKey();
+    if (apiKeyNotice) return apiKeyNotice;
+
+    const script = path.join(scriptsDir, 'visualize_variant_effects.py');
+    const scriptArgs = ['--variant', args.variant];
+    if (args.outputFile) scriptArgs.push('--output', args.outputFile);
+    const res = await ScienceSkillBridge.runScript(script, scriptArgs, { cwd: ctx.cwd, timeoutMs: 90000 });
+    return `🧬 [AlphaGenome Variant Effect Analysis (${args.action})]:\n- Variant: ${args.variant}\n- Output:\n${res.stdout || res.stderr}`;
+  }
+
+  private checkApiKey(): string | null {
+    if (!process.env.ALPHAGENOME_API_KEY) {
       return [
-        `🧬 [AlphaGenome Gene Lookup]:`,
-        `- Symbol: ${args.geneSymbol}`,
-        `- Result:\n${res.stdout.trim()}`,
+        `[ALPHAGENOME NOTICE]: ALPHAGENOME_API_KEY is not configured in environment or .env file.`,
+        `To run online variant effect scoring via DeepMind AlphaGenome API:`,
+        `1. Obtain an API key at https://deepmind.google.com/science/alphagenome/`,
+        `2. Add ALPHAGENOME_API_KEY=<your_key> to your ~/.env file.`,
       ].join('\n');
     }
-
-    // 2. Resolve ontology terms (UBERON / CL)
-    if (args.action === 'resolve_ontology') {
-      if (!args.term) {
-        return '[ALPHAGENOME ERROR]: term is required for resolve_ontology (e.g. liver, cerebellar cortex).';
-      }
-
-      const scriptPath = path.join(scriptsDir, 'resolve_ontology_terms.py');
-      const res = await ScienceSkillBridge.runScript(scriptPath, [args.term], {
-        cwd: context.cwd,
-        timeoutMs: 30000,
-      });
-
-      return [
-        `🧬 [AlphaGenome Ontology Mapping]:`,
-        `- Biological Term: "${args.term}"`,
-        `- Result:\n${res.stdout || res.stderr}`,
-      ].join('\n');
-    }
-
-    // 3. Analyze variant effects
-    if (args.action === 'analyze_variant') {
-      if (!args.variant) {
-        return '[ALPHAGENOME ERROR]: variant is required for analyze_variant (format chr:pos:ref>alt, e.g. chr7:140753336:A>T).';
-      }
-
-      // Check ALPHAGENOME_API_KEY
-      if (!process.env.ALPHAGENOME_API_KEY) {
-        return [
-          `[ALPHAGENOME NOTICE]: ALPHAGENOME_API_KEY is not configured in environment or .env file.`,
-          `To run online variant effect scoring via DeepMind AlphaGenome API:`,
-          `1. Obtain an API key at https://deepmind.google.com/science/alphagenome/`,
-          `2. Add ALPHAGENOME_API_KEY=<your_key> to your ~/.env file.`,
-        ].join('\n');
-      }
-
-      const scriptPath = path.join(scriptsDir, 'visualize_variant_effects.py');
-      const scriptArgs = ['--variant', args.variant];
-      if (args.outputFile) {
-        scriptArgs.push('--output', args.outputFile);
-      }
-
-      const res = await ScienceSkillBridge.runScript(scriptPath, scriptArgs, {
-        cwd: context.cwd,
-        timeoutMs: 90000,
-      });
-
-      return [
-        `🧬 [AlphaGenome Variant Effect Analysis]:`,
-        `- Variant: ${args.variant}`,
-        `- Output:\n${res.stdout || res.stderr}`,
-      ].join('\n');
-    }
-
-    return '[ALPHAGENOME ERROR]: Unknown action. Available actions: lookup_gene, resolve_ontology, analyze_variant.';
+    return null;
   }
 }

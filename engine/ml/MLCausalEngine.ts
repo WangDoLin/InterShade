@@ -2,11 +2,11 @@
  * MLCausalEngine: Autonomous 12-Stage Causal Machine Learning Loop
  *
  * Implements the empirical paradigm for AI model building:
- * 1. TaskFraming & MetricFormalization
- * 2. DataAudit & LeakageRecon
- * 3. ArchitectureDiscovery (HuggingFace / OpenAlex / GitHub)
+ * 1. TaskFraming & MetricFormalization (PromptEnhancerTool)
+ * 2. DataAudit & LeakageRecon (DependencyAuditTool & Supply-chain safety)
+ * 3. ArchitectureDiscovery (LiteratureSearchTool OpenAlex / arXiv / HuggingFace)
  * 4. BatchSanityGate (Micro-batch overfit verification)
- * 5. DataPipelineBuilder (PyTorch Dataset & DataLoader)
+ * 5. DataPipelineBuilder (PyTorch Dataset & DataLoader / ENCODE & AlphaGenome oracles)
  * 6. ModelScaffolding (Modular nn.Module)
  * 7. AMPTraining (Mixed precision, AdamW, Cosine Scheduler)
  * 8. SelfHealingEngine (CUDA OOM, Shape Mismatch, NaN loss)
@@ -22,6 +22,19 @@ export interface MLStageContext {
   modelType: 'tabular' | 'vision' | 'nlp_transformer' | 'bio_sequence';
   bestMetricScore: number;
   currentStage: number;
+  promptSpecification?: Record<string, any>;
+  dependencyAuditStatus?: 'PASSED' | 'FAILED' | 'NOT_AUDITED';
+  literatureBaselines: Array<{
+    title: string;
+    doi?: string;
+    metricScore?: number;
+    architecture?: string;
+  }>;
+  domainOracles: Array<{
+    source: string;
+    target: string;
+    summary: string;
+  }>;
   history: Array<{
     stage: string;
     timestamp: string;
@@ -39,6 +52,9 @@ export interface MLNodeCandidate {
   status: 'EXPLORING' | 'ACCEPTED' | 'PRUNED';
 }
 
+const DEFAULT_METRIC = 'loss';
+const TOTAL_STAGES = 12;
+
 export class MLCausalEngine {
   private context: MLStageContext;
   private solutionTree: Map<string, MLNodeCandidate> = new Map();
@@ -46,12 +62,47 @@ export class MLCausalEngine {
   constructor(taskGoal: string, modelType: MLStageContext['modelType'] = 'nlp_transformer') {
     this.context = {
       taskGoal,
-      targetMetric: 'loss',
+      targetMetric: DEFAULT_METRIC,
       modelType,
       bestMetricScore: Infinity,
       currentStage: 1,
+      dependencyAuditStatus: 'NOT_AUDITED',
+      literatureBaselines: [],
+      domainOracles: [],
       history: [],
     };
+  }
+
+  /**
+   * Sets structured specification derived from PromptEnhancerTool
+   */
+  setPromptSpecification(spec: Record<string, any>): void {
+    this.context.promptSpecification = spec;
+    if (spec.targetMetric) {
+      this.context.targetMetric = spec.targetMetric;
+    }
+  }
+
+  /**
+   * Records dependency security and supply-chain audit result
+   */
+  recordDependencyAudit(passed: boolean, details: string): void {
+    this.context.dependencyAuditStatus = passed ? 'PASSED' : 'FAILED';
+    this.recordStage('DataAudit & DependencyRecon', passed ? 'PASSED' : 'FAILED', details);
+  }
+
+  /**
+   * Adds literature baselines and SOTA architectures retrieved from OpenAlex/arXiv
+   */
+  addLiteratureBaseline(item: { title: string; doi?: string; metricScore?: number; architecture?: string }): void {
+    this.context.literatureBaselines.push(item);
+  }
+
+  /**
+   * Adds biological/scientific domain oracle grounding (ENCODE cCREs, AlphaGenome)
+   */
+  addDomainOracle(source: string, target: string, summary: string): void {
+    this.context.domainOracles.push({ source, target, summary });
   }
 
   /**
@@ -108,14 +159,33 @@ export class MLCausalEngine {
     const lines = [
       `### InterShade 12-Stage ML-SWE Causal Loop Summary`,
       `- **Objective**: ${this.context.taskGoal}`,
-      `- **Model Paradigm**: ${this.context.modelType}`,
-      `- **Current Stage**: ${this.context.currentStage}/12`,
-      `- **Best Metric Score**: ${this.context.bestMetricScore}`,
-      `- **Solution Tree Size**: ${this.solutionTree.size} candidates evaluated`,
+      `- **Model Paradigm**: \`${this.context.modelType}\``,
+      `- **Current Stage**: ${this.context.currentStage}/${TOTAL_STAGES}`,
+      `- **Target Metric**: \`${this.context.targetMetric}\` (Best: ${this.context.bestMetricScore})`,
+      `- **Dependency Audit**: \`${this.context.dependencyAuditStatus}\``,
+      `- **Literature Baselines**: ${this.context.literatureBaselines.length} papers indexed`,
+      `- **Domain Oracles**: ${this.context.domainOracles.length} targets grounded`,
+      `- **Solution Tree**: ${this.solutionTree.size} candidates evaluated`,
       '',
-      `#### Stage History:`,
     ];
 
+    if (this.context.literatureBaselines.length > 0) {
+      lines.push('#### Literature SOTA Baselines:');
+      this.context.literatureBaselines.forEach((b, idx) => {
+        lines.push(`${idx + 1}. **${b.title}** ${b.doi ? `([DOI](${b.doi}))` : ''} - Arch: \`${b.architecture || 'custom'}\``);
+      });
+      lines.push('');
+    }
+
+    if (this.context.domainOracles.length > 0) {
+      lines.push('#### Domain Science Oracles:');
+      this.context.domainOracles.forEach((o, idx) => {
+        lines.push(`${idx + 1}. **[${o.source}]** Target: \`${o.target}\` - ${o.summary}`);
+      });
+      lines.push('');
+    }
+
+    lines.push('#### Stage History:');
     this.context.history.forEach((h, idx) => {
       lines.push(`${idx + 1}. **${h.stage}** [${h.status}] - ${h.details}`);
     });
